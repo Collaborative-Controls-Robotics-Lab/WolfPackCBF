@@ -14,10 +14,6 @@ M = 1;
 % Integration time
 dt = 0.05;
 
-xpur = nan(T,2*N);
-xeva = nan(T,2);
-
-
 % Capture distance
 epsilon = 0.02;
 k = 1;
@@ -136,6 +132,10 @@ IntersectionPoints = zeros(2, 2);
 minPts = zeros(2,N);
 minDst = zeros(1,N);
 CRS = cell(2,1);
+
+% Path recording
+xpur = nan(T,2*N);
+xeva = nan(T,2);
 
 
 for jj = 1:M
