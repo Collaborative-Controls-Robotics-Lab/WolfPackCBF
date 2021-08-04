@@ -48,7 +48,7 @@ T = tf/dt;
 % Set initial evader positions and headings
 % xe = [-0.4*ones(1,M); .0*ones(1, M); zeros(1,M)];
 xe = [-0.12;
-   -0.02; 0];
+   -0.0; 0];
 
 % Terminal time
 t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
@@ -374,153 +374,103 @@ for qq = 1:T
                         xr(2,(jj*2-1):2*jj) = m*xr(1,(jj*2-1):2*jj) - m*p(1) + p(2);
                     end
                     ui = xe(1:2, jj) + xr(:,(jj*2-1)) + xr(:,2*jj) - 3*xp(1:2,ii);
-                elseif ii == 1
-                    xr(:,(jj*2)) = r1;
- 
-                    w1 = 1/(CircValues(3,ii) + 0);
-                    w2 = 1/(CircValues(3,if1) + 0);
-                    a1 = (CircValues(3,ii) + 0);
-                    a2 = (CircValues(3,if1) + 0);
-
-                    ui = 0.5*xr(:,(jj*2)) + 0.5*w1/(w1 + w2)*CircValues(1:2,ii) ...
-                        + 0.5*w2/(w1 + w2)*CircValues(1:2,if1) - CircValues(1:2,ii);
-                    ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
-                    Aij = -(velRatio*(xp(1:2,ii) - xe(1:2, jj)).'/norm(xp(1:2,ii) - xe(1:2, jj)) ...
-                        - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
-                    bij = a1/(a1 + a2)*(velRatio*((xe(1:2, jj) - xp(1:2,ii)).'/norm(xe(1:2, jj) - xp(1:2,ii)) + (xe(1:2, jj) - f1).'/norm(xe(1:2, jj) - f1)) ...
-                        * ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2, jj)) + norm(f1 - xe(1:2, jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);
-                    % A1 - CRS constraint
-                    [x,y,lambda] = closestEllipse(CircValues(1:2,ii), xe(1:2, jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    [A,B,C,D,E,F] = ellipseData(xe(1:2, jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    xstar = [x;y];
-                    dxi = dxstardxi(A,B,C,D,E,F,x,y,lambda,velRatio);
-                    dxe = dxstardxe(A,B,C,D,E,F,x,y,lambda,velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
-                    dxt = dxstardt(A,B,C,D,E,F,x,y,lambda,vmax/velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
-                    num = xp(1:2,ii) - xstar + velRatio^2*xstar - velRatio^2*xe(1:2,jj);
-                    xie = xp(1:2,ii) - xe(1:2,jj);
-                    dhdxi = velRatio*xie.'/norm(xie) - num.'/norm(num)*(eye(2) + (velRatio^2 - 1)*dxi);
-                    dhdxe = -velRatio*xie.'/norm(xie) - num.'/norm(num)*((velRatio^2 - 1)*dxe - velRatio^2*eye(2));
-                    dhdxstar = (1 - velRatio^2)*num.'/norm(num);
-                    A1 = -dhdxi - dhdxstar*dxi;
-                    b1 = dhdxe*ue(:,jj) + dhdxstar*(dxe*ue(:,jj) + dxt) + 1e3*(velRatio*norm(xie) - norm(num) + epsilon)^3;
-
-                    H = {zeros(2), zeros(2), 2*eye(2)};
-                    k = {Aij', A1', zeros(2,1)};
-                    d = {-bij, -b1, -vmax^2};
-                    
-                    nonlconstr = @(x)quadconstr(x,H,k,d);
-                    
-                    % If solution given by weighted consensus does not meet
-                    % our constraints, solve CBF with quadratic programming
-                    if norm(ui) > vmax || any(nonlconstr(ui) > 0)
-                        quad_A = [Aij; A1; ngon_H];
-                        quad_b = [bij; b1; ngon_k];
-                        options = optimset('Display', 'off');
-                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [0; 0], options);
-                    else
-                        z = ui;
-                    end
-
-                    % If solution is infeasible, fall back to saturating
-                    % weighted Consensus result
-                    if norm(z) > vmax && cvxflag == 0
-                        z = ui/norm(ui)*vmax;
-                        cvxflag = 1;
-                    end
-                    
-                    u(1:2) = u(1:2) + pem(ii,jj) * z;
-
-                    hij(1) = velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f1 - xe(1:2,jj))) - norm(xp(1:2,ii) - f1) + 2*epsilon;
-                    midpt(:,ii) = w1/(w1 + w2)*xp(1:2,ii) + w2/(w1 + w2)*f1;
-                elseif ii == N
-                    slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2,jj));
-
-                    xr(:,2*jj-1) = r2;
-                   
-                    w1 = 1/(CircValues(3,if1) + 0);
-                    w2 = 1/(CircValues(3,ii) + 0);
-                    a1 = (CircValues(3,if1) + 0);
-                    a2 = (CircValues(3,ii) + 0);
-                    
-                    ui = 0.5*xr(:,2*jj-1) + 0.5*w2/(w2 + w1)*CircValues(1:2,ii) ...
-                        + 0.5*w1/(w2 + w1)*CircValues(1:2,if1) - CircValues(1:2,ii);
-                    ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
-                    
-                    Aij = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
-                        - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
-                    bij = a1/(a1 + a2)*(velRatio*((xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii)) + (xe(1:2,jj) - f1).'/norm(xe(1:2,jj) - f1)) ...
-                        *ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f1 - xe(1:2,jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);
-                    [x,y,lambda] = closestEllipse(CircValues(1:2,ii), xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    [A,B,C,D,E,F] = ellipseData(xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    xstar = [x;y];
-                    dxi = dxstardxi(A,B,C,D,E,F,x,y,lambda,velRatio);
-                    dxe = dxstardxe(A,B,C,D,E,F,x,y,lambda,velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
-                    dxt = dxstardt(A,B,C,D,E,F,x,y,lambda,vmax/velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
-                    num = xp(1:2,ii) - xstar + velRatio^2*xstar - velRatio^2*xe(1:2,jj);
-                    xie = xp(1:2,ii) - xe(1:2,jj);
-                    dhdxi = velRatio*xie.'/norm(xie) - num.'/norm(num)*(eye(2) + (velRatio^2 - 1)*dxi);
-                    dhdxe = -velRatio*xie.'/norm(xie) - num.'/norm(num)*((velRatio^2 - 1)*dxe - velRatio^2*eye(2));
-                    dhdxstar = (1 - velRatio^2)*num.'/norm(num);
-                    A1 = -dhdxi - dhdxstar*dxi;
-                    b1 = dhdxe*ue(:,jj) + dhdxstar*(dxe*ue(:,jj) + dxt) + 1e3*(velRatio*norm(xie) - norm(num) + epsilon)^3;
-
-                    % Constraints as phrased nonlinearly
-                    H = {zeros(2), zeros(2), 2*eye(2)};
-                    k = {Aij', A1', zeros(2,1)};
-                    d = {-bij, -b1, -vmax^2};                    
-                    nonlconstr = @(x)quadconstr(x,H,k,d);
-                    
-                    % If solution given by weighted consensus does not meet
-                    % our constraints, solve CBF with quadratic programming
-                    if norm(ui) > vmax  || any(nonlconstr(ui) > 0)
-                        quad_A = [Aij; A1; ngon_H];
-                        quad_b = [bij; b1; ngon_k];
-                        options = optimset('Display', 'off');
-                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [0; 0], options);
-                    else
-                        z = ui;
-                    end
-                    
-                    % If solution is infeasible, fall back to saturating
-                    % weighted Consensus result
-                    if norm(z) > vmax && cvxflag == 0
-                        z = ui/norm(ui)*vmax;
-                        cvxflag = 1;
-                    end
-                    
-                    
-                    u(2*ii-1:2*ii) = u(2*ii-1:2*ii) + pem(ii,jj) * z;
                 else
-                    %ui = xp(1:2,ii - 1) + xp(1:2,ii + 1) + xe(1:2,jj) - 3*xp(1:2,ii);
-                    Aij = zeros(2);
-                    bij = zeros(2,1);
-                    w0 = 1/(CircValues(3,if1) + 0);
-                    w1 = 1/(CircValues(3,ii) + 0);
-                    w2 = 1/(CircValues(3,if2) + 0);
-                    a0 = (CircValues(3,if1) + 0);
-                    a1 = (CircValues(3,ii) + 0);
-                    a2 = (CircValues(3,if2) + 0);
+                    if ii == 1
+                        xr(:,(jj*2)) = r1;
 
-                    ui = 0.5*(w1/(w0 + w1) + w1/(w1 + w2))*CircValues(1:2,ii) ...
-                        + 0.5*w0/(w0 + w1)*CircValues(1:2,if1) ...
-                        + 0.5*w2/(w2 + w1)*CircValues(1:2,if2) - CircValues(1:2,ii);%+ xe(1:2,jj) - 2*CircValues(1:2,ii+1);
-                    ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);% + xe(1:2,jj) - xp(1:2,ii);
-                    Aij(1,:) = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
-                        - (xp(1:2,ii) - f2).'/norm(xp(1:2,ii) - f2));
-                    Aij(2,:) = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
-                        - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
-                    bij(1) = a1/(a1 + a2)*(velRatio*((xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii)) + (xe(1:2,jj) - f2).'/norm(xe(1:2,jj) - f2)) ...
-                        *ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f2 - xe(1:2,jj))) - norm(xp(1:2,ii) - f2) + epsilon)^3);
-                    bij(2) = a1/(a1 + a0)*(velRatio*((xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii)) + (xe(1:2,jj) - f1).'/norm(xe(1:2,jj) - f1)) ...
-                        *ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f1 - xe(1:2,jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);
-                    
+                        w1 = 1/(CircValues(3,ii) + 0);
+                        w2 = 1/(CircValues(3,if1) + 0);
+                        a1 = (CircValues(3,ii) + 0);
+                        a2 = (CircValues(3,if1) + 0);
 
-                    H = {zeros(2), zeros(2), 2*eye(2)};
-                    k = {Aij(1,:).', Aij(2,:).', zeros(2,1)};
-                    d = {-bij(1), -bij(2), -vmax^2};
+                        ui = 0.5*xr(:,(jj*2)) + 0.5*w1/(w1 + w2)*CircValues(1:2,ii) ...
+                            + 0.5*w2/(w1 + w2)*CircValues(1:2,if1) - CircValues(1:2,ii);
+                        ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
+                        Aij = -(velRatio*(xp(1:2,ii) - xe(1:2, jj)).'/norm(xp(1:2,ii) - xe(1:2, jj)) ...
+                            - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
+                        bij = a1/(a1 + a2)*(velRatio*((xe(1:2, jj) - xp(1:2,ii)).'/norm(xe(1:2, jj) - xp(1:2,ii)) + (xe(1:2, jj) - f1).'/norm(xe(1:2, jj) - f1)) ...
+                            * ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2, jj)) + norm(f1 - xe(1:2, jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);
+                        % A1 - CRS constraint
+                        [x,y,lambda] = closestEllipse(CircValues(1:2,ii), xe(1:2, jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
+                        [A,B,C,D,E,F] = ellipseData(xe(1:2, jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
+                        xstar = [x;y];
+                        dxi = dxstardxi(A,B,C,D,E,F,x,y,lambda,velRatio);
+                        dxe = dxstardxe(A,B,C,D,E,F,x,y,lambda,velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
+                        dxt = dxstardt(A,B,C,D,E,F,x,y,lambda,vmax/velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
+                        num = xp(1:2,ii) - xstar + velRatio^2*xstar - velRatio^2*xe(1:2,jj);
+                        xie = xp(1:2,ii) - xe(1:2,jj);
+                        dhdxi = velRatio*xie.'/norm(xie) - num.'/norm(num)*(eye(2) + (velRatio^2 - 1)*dxi);
+                        dhdxe = -velRatio*xie.'/norm(xie) - num.'/norm(num)*((velRatio^2 - 1)*dxe - velRatio^2*eye(2));
+                        dhdxstar = (1 - velRatio^2)*num.'/norm(num);
+                        A1 = -dhdxi - dhdxstar*dxi;
+                        b1 = dhdxe*ue(:,jj) + dhdxstar*(dxe*ue(:,jj) + dxt) + 1e3*(velRatio*norm(xie) - norm(num) + epsilon)^3;
+
+                        H = {zeros(2), zeros(2), 2*eye(2)};
+                        k = {Aij', A1', zeros(2,1)};
+                        d = {-bij, -b1, -vmax^2};   
+                    elseif ii == N
+                        xr(:,2*jj-1) = r2;
+
+                        w1 = 1/(CircValues(3,if1) + 0);
+                        w2 = 1/(CircValues(3,ii) + 0);
+                        a1 = (CircValues(3,if1) + 0);
+                        a2 = (CircValues(3,ii) + 0);
+
+                        ui = 0.5*xr(:,2*jj-1) + 0.5*w2/(w2 + w1)*CircValues(1:2,ii) ...
+                            + 0.5*w1/(w2 + w1)*CircValues(1:2,if1) - CircValues(1:2,ii);
+                        ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
+
+                        Aij = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
+                            - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
+                        bij = a1/(a1 + a2)*(velRatio*((xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii)) + (xe(1:2,jj) - f1).'/norm(xe(1:2,jj) - f1)) ...
+                            *ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f1 - xe(1:2,jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);
+                        [x,y,lambda] = closestEllipse(CircValues(1:2,ii), xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
+                        [A,B,C,D,E,F] = ellipseData(xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
+                        xstar = [x;y];
+                        dxi = dxstardxi(A,B,C,D,E,F,x,y,lambda,velRatio);
+                        dxe = dxstardxe(A,B,C,D,E,F,x,y,lambda,velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
+                        dxt = dxstardt(A,B,C,D,E,F,x,y,lambda,vmax/velRatio,[Pxavg;Pyavg],xe(1:2,jj),(T-qq)*dt*vmax/velRatio);
+                        num = xp(1:2,ii) - xstar + velRatio^2*xstar - velRatio^2*xe(1:2,jj);
+                        xie = xp(1:2,ii) - xe(1:2,jj);
+                        dhdxi = velRatio*xie.'/norm(xie) - num.'/norm(num)*(eye(2) + (velRatio^2 - 1)*dxi);
+                        dhdxe = -velRatio*xie.'/norm(xie) - num.'/norm(num)*((velRatio^2 - 1)*dxe - velRatio^2*eye(2));
+                        dhdxstar = (1 - velRatio^2)*num.'/norm(num);
+                        A1 = -dhdxi - dhdxstar*dxi;
+                        b1 = dhdxe*ue(:,jj) + dhdxstar*(dxe*ue(:,jj) + dxt) + 1e3*(velRatio*norm(xie) - norm(num) + epsilon)^3;
                     
+                        H = {zeros(2), zeros(2), 2*eye(2)};
+                        k = {Aij', A1', zeros(2,1)};
+                        d = {-bij, -b1, -vmax^2};   
+                    else
+                        Aij = zeros(2);
+                        bij = zeros(2,1);
+                        w0 = 1/(CircValues(3,if1) + 0);
+                        w1 = 1/(CircValues(3,ii) + 0);
+                        w2 = 1/(CircValues(3,if2) + 0);
+                        a0 = (CircValues(3,if1) + 0);
+                        a1 = (CircValues(3,ii) + 0);
+                        a2 = (CircValues(3,if2) + 0);
+
+                        ui = 0.5*(w1/(w0 + w1) + w1/(w1 + w2))*CircValues(1:2,ii) ...
+                            + 0.5*w0/(w0 + w1)*CircValues(1:2,if1) ...
+                            + 0.5*w2/(w2 + w1)*CircValues(1:2,if2) - CircValues(1:2,ii);%+ xe(1:2,jj) - 2*CircValues(1:2,ii+1);
+                        ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);% + xe(1:2,jj) - xp(1:2,ii);
+                        Aij(1,:) = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
+                            - (xp(1:2,ii) - f2).'/norm(xp(1:2,ii) - f2));
+                        Aij(2,:) = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
+                            - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
+                        bij(1) = a1/(a1 + a2)*(velRatio*((xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii)) + (xe(1:2,jj) - f2).'/norm(xe(1:2,jj) - f2)) ...
+                            *ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f2 - xe(1:2,jj))) - norm(xp(1:2,ii) - f2) + epsilon)^3);
+                        bij(2) = a1/(a1 + a0)*(velRatio*((xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii)) + (xe(1:2,jj) - f1).'/norm(xe(1:2,jj) - f1)) ...
+                            *ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f1 - xe(1:2,jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);                        
+                    
+                        H = {zeros(2), zeros(2), 2*eye(2)};
+                        k = {Aij(1,:).', Aij(2,:).', zeros(2,1)};
+                        d = {-bij(1), -bij(2), -vmax^2};
+                    end                    
+
                     nonlconstr = @(x)quadconstr(x,H,k,d);
-                    
+
                     % If solution given by weighted consensus does not meet
                     % our constraints, solve CBF with quadratic programming
                     if norm(ui) > vmax || any(nonlconstr(ui) > 0)
@@ -531,20 +481,19 @@ for qq = 1:T
                     else
                         z = ui;
                     end
-                    
+
                     % If solution is infeasible, fall back to saturating
                     % weighted Consensus result
                     if norm(z) > vmax && cvxflag == 0
                         z = ui/norm(ui)*vmax;
                         cvxflag = 1;
                     end
-                    
-                    
+
+
                     u(2*ii-1:2*ii) = u(2*ii-1:2*ii) + pem(ii,jj) * z;
                     hij(ii) = velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f2 - xe(1:2,jj))) - norm(xp(1:2,ii) - f2)+ 2*epsilon;
-                    midpt(:,ii) = w1/(w1 + w2)*xp(1:2,ii) + w2/(w1 + w2)*f2;
+                    
                 end
-
             end
         end
     end
@@ -584,7 +533,7 @@ for qq = 1:T
     dx = xp(1:2,1:N) - xe(1:2,1); 
     closest = 100000;
     
-    %pause(0.05)
+%     pause(dt - 0.01)
     for jj = 1:M
         for ii = 1:N
             ev_dist = norm(dx(1:2,ii));
