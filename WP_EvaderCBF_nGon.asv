@@ -38,21 +38,21 @@ Pxavg = 0.5*(Pxmin + Pxmax);
 Pyavg = 0.5*(Pymin + Pymax);
 
 % Maximum control inputs
-vmax = 0.01;
+vmax = 0.02;
 wmax = 2*pi;
 closest = 100000;
 velRatio = 0.5;
 
 % Final time
-tf = 60;
+tf = 25;
 % Number of iterations
 T = tf/dt;
 
 
 % Set initial evader positions and headings
 % xe = [-0.4*ones(1,M); .0*ones(1, M); zeros(1,M)];
-xe = [-0.16;
-   -0.0; 0];
+xe = [-0.12;
+   -0.02; 0];
 
 % Terminal time
 t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
@@ -305,13 +305,6 @@ for qq = 1:T
         unom = xie/norm(xie) + xje/norm(xje);
         unom = unom/norm(unom)*uvmax;
     end
-    % Go straight to the goal
-    %unom = ([Pxavg; Pyavg] - xe(1:2,jj));
-    % Separate agents 1 and 2
-    %unom = velRatio*((xp(1:2,1) - xe(1:2,jj))/norm((xp(1:2,1) - xe(1:2,jj))) + (xp(1:2,2) - xe(1:2,jj))/norm(xp(1:2,2) - xe(1:2,jj)));
-    % Separate agents 2 and 3
-    %unom = ((xp(1:2,2) - xe(1:2,jj))/norm((xp(1:2,2) - xe(1:2,jj))) + (xp(1:2,3) - xe(1:2,jj))/norm(xp(1:2,3) - xe(1:2,jj)));
-    %unom = unom/norm(unom)*uvmax;
 
     for jj = 1:M
         
@@ -319,31 +312,17 @@ for qq = 1:T
             ue(:,jj) = ([Pxavg; Pyavg] - xe(1:2,jj))/norm(([Pxavg; Pyavg] - xe(1:2,jj)))*uvmax;
             flag = 1;
         else
-%             cvx_begin quiet
-%                variable ueop(2)
-%                minimize( (ueop - unom).' * (ueop - unom))
-%                subject to
-%                    Aie * ueop <= bie;
-%                    ueop.'*ueop <= uvmax^2;
-%             cvx_end
-%             
-%             ue(:,jj) = ueop;
             nonlconstr = @(x)quadconstr(x,He,ke,de);
             ue(:,jj) = ([Pxavg; Pyavg] - xe(1:2,jj))/norm(([Pxavg; Pyavg] - xe(1:2,jj)))*uvmax;
 
+            % If nominal solution does not meet our constraints, solve CBF 
+            % with linear programming
             if any(nonlconstr(ue) > 0)
-                %Fmincon options
-               options = optimoptions(@fmincon, 'Algorithm', 'interior-point','Display', 'off',...
-                       'SpecifyObjectiveGradient', true, 'SpecifyConstraintGradient', true, ...
-                       'HessianFcn', @(x,lambda)quadhess(x,lambda,eye(2),He), ...
-                                   'ConstraintTolerance', 1e-6, 'OptimalityTolerance', 1e-6, 'StepTolerance', 1e-6);
-               fun = @(x)quadobj(x,zeros(2),xe(1:2,jj) - [Pxavg; Pyavg]);
-                [ue(:,jj),fval,eflag,output,lambda] = fmincon(fun,[0;0],...
-                    [],[],[],[],[],[],nonlconstr,options);
-                
-                quad_A = [Aij; A1; ngon_H];
-                quad_b = [bij; b1; ngon_k / vel_ratio];
-                ue(:,jj) = quadprog(zeros(2), xe(1:2,jj) - [Pxavg; Pyavg], quad_A, quad_b);
+             
+                quad_A = [Aie(1:end-1, :); ngon_H];
+                quad_b = [bie(1:end-1, :); ngon_k / velRatio];
+                options = optimset('Display', 'off');
+                ue(:,jj) = linprog(xe(1:2,jj) - [Pxavg; Pyavg], quad_A, quad_b, [], [], [], [], [0; 0], options);
                 
             end
             
@@ -401,21 +380,13 @@ for qq = 1:T
                     end
                     ui = xe(1:2, jj) + xr(:,(jj*2-1)) + xr(:,2*jj) - 3*xp(1:2,ii);
                 elseif ii == 1
-                    %[x,y] = closestEllipse(xp(1:2,ii), xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    %[x,y] = closestEllipse(CircValues(1:2,ii+1), xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    %xr(:,1) = [x;y];
-%                     slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2, jj));
-
                     xr(:,(jj*2)) = r1;
-                    %ui = xr(:,1) + xp(1:2,ii+1) + xe(1:2,jj) - 3*xp(1:2,ii);
-                    %ui = xr(:,1) + xp(1:2,ii+1) - 2*xp(1:2,ii);
-                    %ui = (1 - velRatio^2)*(xr(:,1) + xp(1:2,ii+1) - 2*CircValues(1:2,ii+1)) + velRatio*vmax*[cos(xe(3));sin(xe(3))];
+ 
                     w1 = 1/(CircValues(3,ii) + 0);
                     w2 = 1/(CircValues(3,if1) + 0);
                     a1 = (CircValues(3,ii) + 0);
                     a2 = (CircValues(3,if1) + 0);
-                    %ui = 0.5*xr(:,1) + 0.5*w1/(w1 + w2)*xp(1:2,ii) ...
-                    %    + 0.5*w2/(w1 + w2)*xp(1:2,ii+1) - xp(1:2,ii);
+
                     ui = 0.5*xr(:,(jj*2)) + 0.5*w1/(w1 + w2)*CircValues(1:2,ii) ...
                         + 0.5*w2/(w1 + w2)*CircValues(1:2,if1) - CircValues(1:2,ii);
                     ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
@@ -437,18 +408,6 @@ for qq = 1:T
                     dhdxstar = (1 - velRatio^2)*num.'/norm(num);
                     A1 = -dhdxi - dhdxstar*dxi;
                     b1 = dhdxe*ue(:,jj) + dhdxstar*(dxe*ue(:,jj) + dxt) + 1e3*(velRatio*norm(xie) - norm(num) + epsilon)^3;
-                    A = [Aij; A1]; 
-                    b = [bij; b1];
-                    %z = quadprog(eye(2), -ui, A, b, [], [], ones(2,1)*-vmax/sqrt(2), ones(2,1)*vmax/sqrt(2));
-                    %cvx_begin quiet
-                    %    variable z(2)
-                    %    minimize( (ui - z).' * (ui - z))
-                    %   subject to
-                    %        Aij * z <= bij
-                    %        z.'*z <= vmax^2
-                    %cvx_end
-                    %tic
-
 
                     H = {zeros(2), zeros(2), 2*eye(2)};
                     k = {Aij', A1', zeros(2,1)};
@@ -456,62 +415,38 @@ for qq = 1:T
                     
                     nonlconstr = @(x)quadconstr(x,H,k,d);
                     
+                    % If solution given by weighted consensus does not meet
+                    % our constraints, solve CBF with quadratic programming
                     if norm(ui) > vmax || any(nonlconstr(ui) > 0)
-                        %Fmincon options
-%                         options = optimoptions(@fmincon, 'Algorithm', 'interior-point','Display', 'off',...
-%                             'SpecifyObjectiveGradient', true, 'SpecifyConstraintGradient', true, ...
-%                             'HessianFcn', @(x,lambda)quadhess(x,lambda,eye(2),H), ...
-%                             'ConstraintTolerance', 1e-6, 'OptimalityTolerance', 1e-6, 'StepTolerance', 1e-6);
-%                         fun = @(x)quadobj(x,eye(2),-ui);
-%                         [z,fval,eflag,output,lambda] = fmincon(fun,[0; 0],...
-%                             [],[],[],[],[],[],nonlconstr,options);
-
                         quad_A = [Aij; A1; ngon_H];
                         quad_b = [bij; b1; ngon_k];
                         options = optimset('Display', 'off');
-                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [], options);
+                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [0; 0], options);
                     else
                         z = ui;
                     end
 
+                    % If solution is infeasible, fall back to saturating
+                    % weighted Consensus result
                     if norm(z) > vmax && cvxflag == 0
-                        disp('using cvx')
-                        cvx_begin quiet
-                            variable z(2)
-                            minimize( (ui - z).' * (ui - z))
-                            subject to
-                                Aij * z <= bij
-                                norm(z) <= vmax
-                        cvx_end
-                    end
-                    if (size(z,1) == 0 || any(isnan(z)))
-                        %z = (xe(1:2,jj) - xp(1:2,ii))/norm(xe(1:2,jj) - xp(1:2,ii))*vmax;
                         z = ui/norm(ui)*vmax;
                         cvxflag = 1;
                     end
                     
-                    
-                    
                     u(1:2) = u(1:2) + pem(ii,jj) * z;
-                    %toc
+
                     hij(1) = velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f1 - xe(1:2,jj))) - norm(xp(1:2,ii) - f1) + 2*epsilon;
                     midpt(:,ii) = w1/(w1 + w2)*xp(1:2,ii) + w2/(w1 + w2)*f1;
                 elseif ii == N
-                    %[x,y] = closestEllipse(xp(1:2,ii), xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    %[x,y] = closestEllipse(CircValues(1:2,ii+1), xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-                    %xr(:,2) = [x;y];
                     slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2,jj));
 
                     xr(:,2*jj-1) = r2;
-                    %ui = xr(:,2) + xp(1:2, ii-1) + xe(1:2,jj) - 3*xp(1:2,ii);
-                    %ui = xr(:,2) + xp(1:2, ii-1) - 2*xp(1:2,ii);
-                    %ui = (1 - velRatio^2)*(xr(:,2) + xp(1:2,ii-1) - 2*CircValues(1:2,ii+1)) + velRatio*vmax*[cos(xe(3)); sin(xe(3))];
+                   
                     w1 = 1/(CircValues(3,if1) + 0);
                     w2 = 1/(CircValues(3,ii) + 0);
                     a1 = (CircValues(3,if1) + 0);
                     a2 = (CircValues(3,ii) + 0);
-                    %ui = 0.5*xr(:,2) + 0.5*w2/(w2 + w1)*xp(1:2,ii) ...
-                    %    + 0.5*w1/(w2 + w1)*xp(1:2,ii-1) - xp(1:2,ii);
+                    
                     ui = 0.5*xr(:,2*jj-1) + 0.5*w2/(w2 + w1)*CircValues(1:2,ii) ...
                         + 0.5*w1/(w2 + w1)*CircValues(1:2,if1) - CircValues(1:2,ii);
                     ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
@@ -533,53 +468,27 @@ for qq = 1:T
                     dhdxstar = (1 - velRatio^2)*num.'/norm(num);
                     A1 = -dhdxi - dhdxstar*dxi;
                     b1 = dhdxe*ue(:,jj) + dhdxstar*(dxe*ue(:,jj) + dxt) + 1e3*(velRatio*norm(xie) - norm(num) + epsilon)^3;
-                    A = [Aij; A1]; 
-                    b = [bij; b1];
-                    %z = quadprog(eye(2), -ui, A, b, [], [], ones(2,1)*-vmax/sqrt(2), ones(2,1)*vmax/sqrt(2));
-                    %cvx_begin quiet
-                    %    variable z(2)
-                    %    minimize( (ui - z).' * (ui - z))
-                    %    subject to
-                    %        Aij * z <= bij
-                    %        z.'*z <= vmax^2
-                    %cvx_end
+
+                    % Constraints as phrased nonlinearly
                     H = {zeros(2), zeros(2), 2*eye(2)};
                     k = {Aij', A1', zeros(2,1)};
-                    d = {-bij, -b1, -vmax^2};
-                    
+                    d = {-bij, -b1, -vmax^2};                    
                     nonlconstr = @(x)quadconstr(x,H,k,d);
                     
+                    % If solution given by weighted consensus does not meet
+                    % our constraints, solve CBF with quadratic programming
                     if norm(ui) > vmax  || any(nonlconstr(ui) > 0)
-                        %Fmincon options
-%                         options = optimoptions(@fmincon, 'Algorithm', 'interior-point','Display', 'off',...
-%                             'SpecifyObjectiveGradient', true, 'SpecifyConstraintGradient', true, ...
-%                             'HessianFcn', @(x,lambda)quadhess(x,lambda,eye(2),H), ...
-%                             'ConstraintTolerance', 1e-6, 'OptimalityTolerance', 1e-6, 'StepTolerance', 1e-6);
-%                         
-%                         fun = @(x)quadobj(x,eye(2),-ui);
-%                         [z,fval,eflag,output,lambda] = fmincon(fun,[0; 0],...
-%                             [],[],[],[],[],[],nonlconstr,options);
-
                         quad_A = [Aij; A1; ngon_H];
                         quad_b = [bij; b1; ngon_k];
                         options = optimset('Display', 'off');
-                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [], options);
+                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [0; 0], options);
                     else
                         z = ui;
                     end
                     
+                    % If solution is infeasible, fall back to saturating
+                    % weighted Consensus result
                     if norm(z) > vmax && cvxflag == 0
-                        disp('using cvx')
-                        cvx_begin quiet
-                            variable z(2)
-                            minimize( (ui - z).' * (ui - z))
-                            subject to
-                                Aij * z <= bij
-                                norm(z) <= vmax
-                        cvx_end
-                    end
-                    if (size(z,1) == 0 || any(isnan(z)))
-                        %z = (xe(1:2,jj) - xp(1:2,ii))/norm(xe(1:2,jj) - xp(1:2,ii))*vmax;
                         z = ui/norm(ui)*vmax;
                         cvxflag = 1;
                     end
@@ -633,23 +542,23 @@ for qq = 1:T
                         quad_A = [Aij; A1; ngon_H];
                         quad_b = [bij; b1; ngon_k];
                         options = optimset('Display', 'off');
-                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [], options);
+                        z = quadprog(eye(2), -ui, quad_A, quad_b, [], [], [], [], [0; 0], options);
                     else
                         z = ui;
                     end
                     
                     
                     if norm(z) > vmax && cvxflag == 0
-                        disp('using cvx')
-                        cvx_begin quiet
-                            variable z(2)
-                            minimize( (ui - z).' * (ui - z))
-                            subject to
-                                Aij * z <= bij
-                                norm(z) <= vmax
-                        cvx_end
-                    end
-                    if (size(z,1) == 0 || any(isnan(z)))
+%                         disp('using cvx')
+%                         cvx_begin quiet
+%                             variable z(2)
+%                             minimize( (ui - z).' * (ui - z))
+%                             subject to
+%                                 Aij * z <= bij
+%                                 norm(z) <= vmax
+%                         cvx_end
+%                     end
+%                     if (size(z,1) == 0 || any(isnan(z)))
                         %z = (xe(1:2,jj) - xp(1:2,ii))/norm(xe(1:2,jj) - xp(1:2,ii))*vmax;
                         z = ui/norm(ui)*vmax;
                         cvxflag = 1;
