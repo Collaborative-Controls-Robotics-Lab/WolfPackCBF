@@ -489,10 +489,8 @@ for qq = 1:T
                         cvxflag = 1;
                     end
 
-
                     u(2*ii-1:2*ii) = u(2*ii-1:2*ii) + pem(ii,jj) * z;
-                    hij(ii) = velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f2 - xe(1:2,jj))) - norm(xp(1:2,ii) - f2)+ 2*epsilon;
-                    
+                    hij(ii) = velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f2 - xe(1:2,jj))) - norm(xp(1:2,ii) - f2)+ 2*epsilon;                   
                 end
             end
         end
