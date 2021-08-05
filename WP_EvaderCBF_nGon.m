@@ -5,9 +5,6 @@
 % Using unicycle dynamics
 
 %%
-simulate_flag = 1;
-
-
 vid = false;
 rng(140)
 
@@ -62,8 +59,6 @@ N = numAgents(velRatio, epsilon, L)
 L_pred = distSpanned(velRatio, epsilon, N)
 
 
-
-robotDiameter = 0.14;
 %% Transform between workspaces
 feet2meter = unitsratio('meter', 'feet');
 simCenter = [(Dxmin + Dxmax)/2;(Dymin + Dymax)/2];
@@ -72,11 +67,6 @@ robWorkspaceHalfWidth = 17*feet2meter/2;
 scaleRatioSim2Rob = min(robWorkspaceHalfHeight/(Dymax - Dymin),robWorkspaceHalfWidth/(Dxmax - Dxmin));
 sim2rob = @(xx) [xx(1,:)-simCenter(1);xx(2,:)-simCenter(2)]*scaleRatioSim2Rob;
 rob2sim = @(xx) [xx(1,:)/scaleRatioSim2Rob+simCenter(1);xx(2,:)/scaleRatioSim2Rob+simCenter(2)];
-
-% Flags for initializing the agents.
-initializing = true;
-achievedInitialPosition = false;
-achievedInitialHeading  = false;
 
 %% Initialize Control Utilities, Parameters and Gains
 % Select the number of iterations for the experiment.  This value is
@@ -110,76 +100,10 @@ barrierCertificate = create_si_barrier_certificate('SafetyRadius', barrierSafety
 % Generate a single integrator model to unicycle model control conversion
 si2uni = ...
     create_si_to_uni_mapping('ProjectionDistance', 1*robotDiameter);
-%% Initialize System
-if simulate_flag
-    % Define the number of pursuers
-    numPursuers = N; 
-    numRobots = numPursuers + M; % Plus one evader
-    % Define the Robotarium object used to numerically integrate
-    r = Robotarium('NumberOfRobots', numRobots, 'ShowFigure', true);
-    % Factor related to maximum linear and angular speed
-    controlMaxSpeed = vmax;
-    % Scale factor reduces magnitude of commands
-    controlScaleFactor = 1;
-    
-    robotXY = diag([robWorkspaceHalfWidth, robWorkspaceHalfHeight]) * (2*rand(2, numRobots) - 1);
-    robotTheta = 2*pi*rand(1,numRobots);
-else
-    % Factor related to maximum linear and angular speed
-    controlMaxSpeed = vmax;
-    % Scale factor reduces magnitude of commands
-    controlScaleFactor = 1; %5;%0.05;%0.002;
-    % Initialize the Vicon Client
-    disp('>>>> Establishing connections with Vicon...')
-    [ViconClient,numTrackables] = ViconClientInit;
-    disp('>>>> Connections successful!')
-    % Fetch initial data to create pose object
-    viconPose = ViconClientFetch(ViconClient);
-    % Get the names of the trackable objects
-    viconNames = {viconPose.name};
-    % Determine which objects are named K**
-    robotIndicesVicon = contains(viconNames,'K','IgnoreCase',true);
-    % Determine the IP address of the robots
-    robotIP = cell2mat(viconNames(robotIndicesVicon).');
-    robotIP = robotIP(:,2:3);
-    % Determine number of robots
-    numRobots = size(robotIP,1);
-    disp(['>>>> Number of robots detected: ',num2str(numRobots)])
-    numPursuers = numRobots - 1; % Minus one evader
-    disp(['>>>> Evader robot: K', robotIP(numRobots,:)])
-    % Initialize the robots
-    robotDriverVerbosity = 0;
-    disp( '>>>> Establishing connections with the robots...')
-    K4Drv = KheperaDriverInit(robotIP,[],robotDriverVerbosity);
-    disp('>>>> Connections successful!')
-    % Get initial positions and headings
-    robotPose = viconPose(robotIndicesVicon);
-    robotPositionXYZ0 = [robotPose.positionXYZ];
-    robotAnglesXYZ0 = [robotPose.anglesXYZ];
-    % Extract controllable states for convenience
-    robotXY0 = robotPositionXYZ0(1:2,:);
-    robotTheta0 = robotAnglesXYZ0(3,:); % Yaw
-    % Send a stop command to the robots and wait for a moment
-    KheperaSetSpeed(K4Drv, 0, 0)
-    pause(0.1)
-    disp('>>>> Determining heading bias...')
-    % Recalibrate to rule out bias. Make the robot move for a short time
-    KheperaSetSpeed(K4Drv, controlMaxSpeed/2, 0)
-    pause(0.5)
-    KheperaSetSpeed(K4Drv, 0, 0)
-    % Get updated data
-    viconPose = ViconClientFetch(ViconClient,viconPose,1);
-    robotPose = viconPose(robotIndicesVicon);
-    robotPositionXYZ = [robotPose.positionXYZ];
-    robotAnglesXYZ = [robotPose.anglesXYZ];
-    % Extract controllable states for convenience
-    robotXY = robotPositionXYZ(1:2,:);
-    robotTheta = atan2(robotXY(2,:)-robotXY0(2,:),robotXY(1,:)-robotXY0(1,:));
-    robotThetaBias = atan2(sin(robotTheta0-robotTheta),cos(robotTheta0-robotTheta));
-    disp(['>>>>>>>> Robot vicon heading (degrees):',num2str(robotTheta0*180/pi)])
-    disp(['>>>>>>>> Robot actual heading (degrees):',num2str(robotTheta*180/pi)])
-    disp(['>>>>>>>> Robot heading bias (degrees):',num2str(robotThetaBias*180/pi)])
-end
+
+
+%% Initialize the System
+r = CCRL_Robots(N + M, true);
 
 
 % State Vectors
@@ -228,7 +152,6 @@ de = cell(N+2,1);
 neigh = zeros(N, 2);
 
 if vid == true
-    %nFrames = 20;
     vidObj = VideoWriter('test', 'MPEG-4');
     vidObj.Quality = 75;
     vidObj.FrameRate = 50;
@@ -237,11 +160,11 @@ end
 
 % Plot everything
 figure(1); hold on; axis equal
-if ~simulate_flag
-    set(1,'Units','normalized','color','k','Position',[1 1/3 2/3 2/3]) % on TV
-else
-    set(1,'color','k','Position',[100 180 700*1.8 360*1.8])
-end
+% if ~simulate_flag
+%     set(1,'Units','normalized','color','k','Position',[1 1/3 2/3 2/3]) % on TV
+% else
+%     set(1,'color','k','Position',[100 180 700*1.8 360*1.8])
+% end
 
 
 % Target set
@@ -269,50 +192,11 @@ ue = zeros(2, N);
 
 
 
-%% Visualization Elements
-% Load projector calibration matrix
-load('projectiveTransform.mat','H')
-% Construct an extended display object
-extDisp = extendedDisplay(H,r.figure_handle);
-% Allocate pursuer related handles
-attDomHandle     = gobjects(2,numPursuers);
-apolCircHandle   = gobjects(2,numPursuers);
-apolArcHandle    = gobjects(2,numPursuers);
-apolIntHandle    = gobjects(2,numPursuers-1);
-projPosHandle    = gobjects(2,numPursuers);
-crefPosHandle    = gobjects(2,numPursuers);
-refHeadingHandle = gobjects(2,numPursuers);
-% Define a distinct color matrix
-colorMat = linspecer(numPursuers);
-% Initialize plot handles
-reachHandle = extDisp.fill(nan,nan,0.5*[1 1 1],'FaceAlpha',0.05,...
-    'EdgeColor',0.85*[1 1 1],'EdgeAlpha',0.5,'LineWidth',2);
-constVelHandle   = extDisp.plot(nan,nan,'--','Color',0.85/2*[1 1 1]);
-rachSampHandle = extDisp.plot(nan,nan,'bo');
-for ii = 1:numPursuers
-    attDomHandle(:,ii) = extDisp.fill(nan,nan,colorMat(ii,:)*0.5,'FaceAlpha',.15,...
-        'EdgeColor',colorMat(ii,:),'EdgeAlpha',0.5,'LineWidth',2);
-    
-    apolCircHandle(:,ii) = extDisp.fill(nan,nan,colorMat(ii,:)*0.5,'FaceAlpha',0.15,'EdgeColor',colorMat(ii,:)*0.5,'EdgeAlpha',0.25,'LineWidth',1);
-    
-    apolArcHandle(:,ii) = extDisp.plot(nan(1,100),nan(1,100),'Color',colorMat(ii,:),'LineWidth',3);
-    projPosHandle(:,ii) = extDisp.plot(nan,nan,'o','Color',colorMat(ii,:),'MarkerSize',10);
-    crefPosHandle(:,ii) = extDisp.plot(nan,nan,'x','Color',colorMat(ii,:),'MarkerSize',10);
-    refHeadingHandle(:,ii) = extDisp.plot(nan,nan,'--','Color',colorMat(ii,:),'LineWidth',2);
-    
-    if ii < numPursuers
-        apolIntHandle(:,ii) = extDisp.scatter(nan(1,2),nan(1,2),40,'filled','MarkerEdgeColor',0.66*(colorMat(ii,:)+colorMat(ii+1,:)),'MarkerFaceColor',0.66*(colorMat(ii,:)+colorMat(ii+1,:)),'LineWidth',1.5);
-    end
-    
-end
-
-
-
 for jj = 1:M
     CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], T*dt*vmax/velRatio);
 
     h3(jj) = fimplicit(CRS{jj}, 'r', 'LineWidth', 1.5,'DisplayName','Reachable Set');
-%     h4 = plot(0,0, 'm', 'LineWidth', 1.5);
+    %h4 = plot(0,0, 'm', 'LineWidth', 1.5);
     %h6 = plot(0,0, 'gd', 'LineWidth', 2.5);
     %h7 = plot(0,0, 'b*', 'LineWidth', 2.5);
 end
@@ -354,30 +238,13 @@ fimplicit(nom_circle, 'g', 'LineWidth', 1.5,'HandleVisibility','off');
 inpose = [xp(1:2,:).'; xe(1:2,:).'].';
 initialPoseX = inpose(1,:);
 initialPoseY = inpose(2, :);
-% Algorithm loop
+
+%% Algorithm loop
 for qq = 1:T
-    if simulate_flag
-        % Retrieve the most recent poses from the Robotarium.  The time delay is
-        % approximately 0.033 seconds
-        x = r.get_poses();
-        % Rename for convenience
-        robotXY = x(1:2,:);
-        robotTheta = x(3,:);
-    else
-        % Grabbing new data
-        viconPose = ViconClientFetch(ViconClient,viconPose,1);
-        robotPose = viconPose(robotIndicesVicon);
-        robotPositionXYZ = [robotPose.positionXYZ];
-        robotAnglesXYZ = [robotPose.anglesXYZ];
-        % Extract controllable states for convenience
-        robotXY = robotPositionXYZ(1:2,:);
-        robotTheta = robotAnglesXYZ(3,:)-robotThetaBias; % Yaw
-        x = [robotXY;robotTheta];
-        % Set the updated pose for the robots and visualize
-        r.set_poses([robotXY;robotTheta]);
-        r.draw_robots();
-    end
-    
+    % Update position and orientation
+    [xy_all, theta_all] = r.getXYTheta();
+    xp = [xy_all(1:end-M, :); theta_all(1:end-M,:)]
+    xe = [xy_all(N+1:end, :); theta_all(N+1:end,:)]
     
     if initializing
         % Initialize robot positions and heading
