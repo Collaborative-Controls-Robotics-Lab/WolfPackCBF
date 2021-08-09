@@ -7,15 +7,12 @@ classdef CCRL_Robots
         isSimulation
         robotXY
         robotTheta
-        robotVelLin
-        robotVelTheta
         
         initializing = true;
         achievedInitialPosition = false;
         achievedInitialHeading  = false;
-        robotDiameter = 0.02;%0.14;
+        robotDiameter = 0.14;
         
-        controlScaleFactor = 1;
         maxIterations
         indxRobots
         domainBoundaries
@@ -31,13 +28,10 @@ classdef CCRL_Robots
         
         sim2rob
         rob2sim
-        
-        initialPoseX
-        initialPoseY
     end
     
     methods
-        function obj = CCRL_Robots(numRobots, isSimulation, Dxmin, Dxmax, Dymin, Dymax, initialPoseX, initialPoseY, dt)
+        function obj = CCRL_Robots(numRobots, isSimulation, Dxmin, Dxmax, Dymin, Dymax)
             %CCRL_ROBOTS Construct an instance of this class
             %   Detailed explanation goes here
             
@@ -46,8 +40,6 @@ classdef CCRL_Robots
             obj.isSimulation = isSimulation;
             obj.robotXY = zeros(2, numRobots);
             obj.robotTheta = zeros(2, numRobots);
-            obj.initialPoseX = initialPoseX;
-            obj.initialPoseY = initialPoseY;
             
             % Transform between workspaces
             feet2meter = unitsratio('meter', 'feet');
@@ -138,7 +130,7 @@ classdef CCRL_Robots
             % Define the domain boundaries
 %             obj.domainBoundaries = r.boundaries;
             % Fixed time step for simulation
-            obj.dtSim = dt;
+            obj.dtSim = 0.033; % From ARobotatium, DO NOT CHANGE THIS VALUE
             % Safety distance (barrier ceritificates)
             obj.barrierSafetyDist = 1.5 * obj.robotDiameter;
             % Termination condition distance
@@ -224,112 +216,78 @@ classdef CCRL_Robots
 %             end
         end
         
-        function [obj, dxu] = goToInitialPositions(obj)
+        function goToInitialPositions(obj)
             % Initialize robot positions and heading
-            if ~obj.achievedInitialPosition
+            if obj.achievedInitialPosition
                 % Go to goal
                 dxi = obj.controlScaleFactor*obj.positionController(obj.robotXY,[obj.initialPoseX; obj.initialPoseY]);
                 % Add collision avoidance
                 dxi = obj.barrierCertificate(dxi,[obj.robotXY;obj.robotTheta]);
                 % Convert to unicycle model
-                dxu = obj.si2uni(dxi,[obj.robotXY;obj.robotTheta]);
+                dxu = obj.si2uni(dxi,[obj.robotXY;robotTheta]);
                 % Check if they've converged
-                robotsDone = hypot(obj.robotXY(1,:)-obj.initialPoseX,obj.robotXY(2,:)-obj.initialPoseY)<obj.robotDiameter/4;
+                robotsDone = hypot(robotXY(1,:)-initialPoseX,robotXY(2,:)-initialPoseY)<robotDiameter/4;
                 % Set LED's to yellow if they've converged
-%                 r.set_left_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
-%                 r.set_right_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
-%                 % Set LED's to red if the have not converged
-%                 r.set_left_leds(indxRobots(~robotsDone),[255;0;0]*ones(1,nnz(~robotsDone)));
-%                 r.set_right_leds(indxRobots(~robotsDone),[255;0;0]*ones(1,nnz(~robotsDone)));
+                r.set_left_leds(indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
+                r.set_right_leds(indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
+                % Set LED's to red if the have not converged
+                r.set_left_leds(indxRobots(~robotsDone),[255;0;0]*ones(1,nnz(~robotsDone)));
+                r.set_right_leds(indxRobots(~robotsDone),[255;0;0]*ones(1,nnz(~robotsDone)));
 
                 if all(robotsDone)
-                    obj.achievedInitialPosition = true;
+                    achievedInitialPosition = true;
                 end
             else
-                if ~obj.achievedInitialHeading
+                if ~achievedInitialHeading
                     % Turn to your corresponding headings
-%                     dxu(2,1:numPursuers) = pi-map_angle(obj.robotTheta(1:numPursuers));
-                    dxu(2,:) = -obj.robotTheta(:);
+                    dxu(2,1:numPursuers) = pi-map_angle(robotTheta(1:numPursuers));
+                    dxu(2,numRobots) = -robotTheta(numRobots);
                     % Check if they've converged
                     robotsDone = abs(dxu(2,:))<1*pi/180; % Within 1 degree
                     % Set LED's to green if they've converged
-%                     r.set_left_leds(indxRobots(robotsDone),[0;255;0]*ones(1,nnz(robotsDone)));
-%                     r.set_right_leds(indxRobots(robotsDone),[0;255;0]*ones(1,nnz(robotsDone)));
-%                     % Set LED's to yellow if the have not converged
-%                     r.set_left_leds(indxRobots(~robotsDone),[255;255;0]*ones(1,nnz(~robotsDone)));
-%                     r.set_right_leds(indxRobots(~robotsDone),[255;255;0]*ones(1,nnz(~robotsDone)));
+                    r.set_left_leds(indxRobots(robotsDone),[0;255;0]*ones(1,nnz(robotsDone)));
+                    r.set_right_leds(indxRobots(robotsDone),[0;255;0]*ones(1,nnz(robotsDone)));
+                    % Set LED's to yellow if the have not converged
+                    r.set_left_leds(indxRobots(~robotsDone),[255;255;0]*ones(1,nnz(~robotsDone)));
+                    r.set_right_leds(indxRobots(~robotsDone),[255;255;0]*ones(1,nnz(~robotsDone)));
 
                     if all(robotsDone) % Within 1 degree
-                        obj.achievedInitialHeading = true;
+                        achievedInitialHeading = true;
                     end
                 else
 
                     % Done initializing, start a clock using odometry
                     %
-                    obj.initializing = false;
-                    dxu = zeros(2, obj.numRobots);
+                    initializing = false;
 
                     % Initializing CRS variables and timer
 
-%                     % Odometry & Reachable set parameters
-%                     xf = mean(robotXY(1,1:numPursuers));
-%                     yf = mean(robotXY(2,1:numPursuers));
-%                     x0 = robotXY(1,numRobots);
-% 
-%                     tfinal =  1.2 * (xf-x0)/(robotHorizontalSpeed); % Adding 20% to the time required to reach origin w/o maneuvering
-%                     % Keeping for now to not screw up reach set calc
-%                     %                 tcoverage = tfinal/2; % Assumes same speed from all robots
-% 
-%                     if simulate_flag
-%                         t = 0;
-%                         step_cnt = 1;
-%                         dt = dtSim;
-%                     else
-%                         % Create a timer object to determine execution time
-%                         timer = tic;
-%                         tLast = toc(timer);
-%                         % Force rendering and introduce a small delay
-%                         drawnow;
-%                         % Obtain new time
-%                         t = toc(timer);
-%                         dt = t-tLast;
-%                     end
+                    % Odometry & Reachable set parameters
+                    xf = mean(robotXY(1,1:numPursuers));
+                    yf = mean(robotXY(2,1:numPursuers));
+                    x0 = robotXY(1,numRobots);
+
+                    tfinal =  1.2 * (xf-x0)/(robotHorizontalSpeed); % Adding 20% to the time required to reach origin w/o maneuvering
+                    % Keeping for now to not screw up reach set calc
+                    %                 tcoverage = tfinal/2; % Assumes same speed from all robots
+
+                    if simulate_flag
+                        t = 0;
+                        step_cnt = 1;
+                        dt = dtSim;
+                    else
+                        % Create a timer object to determine execution time
+                        timer = tic;
+                        tLast = toc(timer);
+                        % Force rendering and introduce a small delay
+                        drawnow;
+                        % Obtain new time
+                        t = toc(timer);
+                        dt = t-tLast;
+                    end
                 end
             end
         end
-        
-        function obj = set_velocities(obj, dxu)
-            if obj.isSimulation
-                obj.robotVelLin = dxu(1,:);
-                obj.robotVelTheta = dxu(2, :);
-            else
-                % Send velocity updates to robots
-                KheperaSetSpeed(K4Drv, dxu(1,:), dxu(2,:))
-                % KheperaSetSpeed(K4Drv,0,0)
-            end
-        
-        end
-        
-        function obj = step(obj)
-            if obj.isSimulation
-                obj.robotTheta = obj.robotTheta + obj.robotVelTheta * obj.dtSim;
-                obj.robotXY = obj.robotXY + [cos(obj.robotTheta); sin(obj.robotTheta)] .* obj.robotVelLin * obj.dtSim;
-            end
-        end
-        
-        function obj = stop(obj)
-            if ~obj.isSimulation
-                % Stop all robots at the end
-                KheperaSetSpeed(K4Drv, 0, 0)
-                % Disconnect the Vicon client
-                ViconClientDisconnect(ViconClient)
-                % Disconnect the Khepera driver client
-                KheperaDriverDisconnect(K4Drv)
-                % Close the "stop" window it is still open
-            end
-
-        end
-        
     end
 end
 

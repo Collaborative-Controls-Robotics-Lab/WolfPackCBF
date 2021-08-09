@@ -19,14 +19,10 @@ k = 1;
 cvxflag = 0;
 
 % Domain
-% Dxmin = -0.3;
-% Dxmax = 0.9;
-% Dymin = -0.5;
-% Dymax = 0.5;
-Dxmin = -2.5908;
-Dxmax = 2.5908;
-Dymin = -1.8288;
-Dymax = 1.8288;
+Dxmin = -0.3;
+Dxmax = 0.9;
+Dymin = -0.5;
+Dymax = 0.5;
 
 % Target set
 Pxmin = 0.525;
@@ -127,14 +123,6 @@ end
 figure(1);
 hold on; 
 axis equal;
-xlim([Dxmin Dxmax]);
-ylim([Dymin Dymax]);
-%% Visualization Elements
-% Load projector calibration matrix
-load('projectiveTransform.mat','H')
-
-% Construct an extended display object
-extDisp = extendedDisplay(H,gcf);
 
 
 %%
@@ -146,16 +134,17 @@ extDisp = extendedDisplay(H,gcf);
 
 
 % Target set
-extDisp.patch([Pxmax Pxmax Pxmin Pxmin], [Pymax Pymin Pymin Pymax]);%, 'green');%,'HandleVisibility','off')
-
+patch([Pxmax Pxmax Pxmin Pxmin], [Pymax Pymin Pymin Pymax], 'green','HandleVisibility','off')
+xlim([Dxmin Dxmax]);
+ylim([Dymin Dymax]);
 
 % Evader
 [xs,ys] = getpatches(xe,0.05);
-h1 = extDisp.patch(xs, ys);%, 'red', 'DisplayName', 'Evader');
+h1 = patch(xs, ys, 'red', 'DisplayName', 'Evader');
 
 % Pursuers
 [xs,ys] = getpatches(xp,0.05);
-h2 = extDisp.patch(xs,ys);%, 'blue','DisplayName', 'Pursuers');
+h2 = patch(xs,ys, 'blue','DisplayName', 'Pursuers');
 CircValues = zeros(3, N+1);
 IntersectionPoints = zeros(2, 2);
 minPts = zeros(2,N);
@@ -171,13 +160,13 @@ ue = zeros(2, M);
 for jj = 1:M
     CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], T*dt*vmax/velRatio);
 
-    h3(jj) = fimplicit(CRS{jj}, 'r', 'LineWidth', 1.5);%,'DisplayName','Reachable Set');
+    h3(jj) = fimplicit(CRS{jj}, 'r', 'LineWidth', 1.5,'DisplayName','Reachable Set');
     %h4 = plot(0,0, 'm', 'LineWidth', 1.5);
     %h6 = plot(0,0, 'gd', 'LineWidth', 2.5);
     %h7 = plot(0,0, 'b*', 'LineWidth', 2.5);
 end
 
-h5 = extDisp.plot(xr(1,:),xr(2,:), 'md', 'LineWidth', 2.5);%,'DisplayName','Reference Point');
+h5 = plot(xr(1,:),xr(2,:), 'md', 'LineWidth', 2.5,'DisplayName','Reference Point');
 
 Apollonius = cell(N,1);
 EpsilonCirc = cell(N, 1);
