@@ -5,6 +5,7 @@
 % Using unicycle dynamics
 
 %%
+close all
 vid = false;
 rng(140)
 
@@ -23,6 +24,10 @@ Dxmin = -0.3;
 Dxmax = 0.9;
 Dymin = -0.5;
 Dymax = 0.5;
+% Dxmin = -2.5908;
+% Dxmax = 2.5908;
+% Dymin = -1.8288;
+% Dymax = 1.8288;
 
 % Target set
 Pxmin = 0.525;
@@ -123,50 +128,63 @@ end
 figure(1);
 hold on; 
 axis equal;
+xlim([Dxmin Dxmax]);
+ylim([Dymin Dymax]);
+%% Visualization Elements
+% Load projector calibration matrix
+load('projectiveTransform.mat','H')
+
+% Construct an extended display object
+extDisp = extendedDisplay(H,gcf);
 
 
 %%
-% if ~simulate_flag
-%     set(1,'Units','normalized','color','k','Position',[1 1/3 2/3 2/3]) % on TV
-% else
-%     set(1,'color','k','Position',[100 180 700*1.8 360*1.8])
-% end
+if ~r.isSimulation
+    set(1,'Units','normalized','color','k','Position',[1 1/3 2/3 2/3]) % on TV
+else
+    set(1,'color','k','Position',[100 180 700*1.8 360*1.8])
+end
 
 
 % Target set
-patch([Pxmax Pxmax Pxmin Pxmin], [Pymax Pymin Pymin Pymax], 'green','HandleVisibility','off')
-xlim([Dxmin Dxmax]);
-ylim([Dymin Dymax]);
+extDisp.patch([Pxmax Pxmax Pxmin Pxmin], [Pymax Pymin Pymin Pymax], 'FaceColor', 'green', 'HandleVisibility','off');
+
 
 % Evader
 [xs,ys] = getpatches(xe,0.05);
-h1 = patch(xs, ys, 'red', 'DisplayName', 'Evader');
+h1 = extDisp.patch(xs, ys, 'FaceColor', 'red', 'DisplayName', 'Evader');
 
 % Pursuers
 [xs,ys] = getpatches(xp,0.05);
-h2 = patch(xs,ys, 'blue','DisplayName', 'Pursuers');
+h2 = gobjects(N, 2);
+xps = reshape(xs,3,[]);
+yps = reshape(ys,3,[]);
+for ii = 1:N
+    h2(ii,:) = extDisp.patch(xps,yps, 'FaceColor', 'blue', 'DisplayName', 'Pursuers');
+end
 CircValues = zeros(3, N+1);
 IntersectionPoints = zeros(2, 2);
 minPts = zeros(2,N);
 minDst = zeros(1,N);
-CRS = cell(2,1);
+CRS = cell(M,1);
 
 % Path recording
 xpur = nan(T,2*N);
 xeva = nan(T,2);
 ue = zeros(2, M);
 
+h3 = gobjects(2, M);
 
 for jj = 1:M
     CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], T*dt*vmax/velRatio);
 
-    h3(jj) = fimplicit(CRS{jj}, 'r', 'LineWidth', 1.5,'DisplayName','Reachable Set');
+    h3(:, jj) = extDisp.fimplicit(CRS{jj}, 'r', 'LineWidth', 1.5, 'DisplayName','Reachable Set');
     %h4 = plot(0,0, 'm', 'LineWidth', 1.5);
     %h6 = plot(0,0, 'gd', 'LineWidth', 2.5);
     %h7 = plot(0,0, 'b*', 'LineWidth', 2.5);
 end
 
-h5 = plot(xr(1,:),xr(2,:), 'md', 'LineWidth', 2.5,'DisplayName','Reference Point');
+h5 = extDisp.plot(xr(1,:),xr(2,:), 'md', 'LineWidth', 2.5, 'DisplayName','Reference Point');
 
 Apollonius = cell(N,1);
 EpsilonCirc = cell(N, 1);
@@ -185,12 +203,12 @@ for jj = 1:M
         os = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
         ApCircle = circle(os(1), os(2), rs);
         CircValues(:,ii) = [os(1); os(2); rs];
-        Apollonius{ii,jj} = fimplicit(ApCircle, 'b', 'LineWidth', 1.5,'HandleVisibility','off');
+        Apollonius{ii,jj} = extDisp.fimplicit(ApCircle, 'b', 'LineWidth', 1.5,'HandleVisibility','off');
         % Find point on circles for minimum distance
         
         % plot epsilon circle
         epcirc = circle(xp(1,ii), xp(2,ii), epsilon);
-        EpsilonCirc{ii} = fimplicit(epcirc, 'g', 'LineWidth', 1,'HandleVisibility','off');
+        EpsilonCirc{ii} = extDisp.fimplicit(epcirc, 'g', 'LineWidth', 1,'HandleVisibility','off');
     end
 end
 count = 1;
@@ -198,7 +216,7 @@ count = 1;
 % Evader distance at terminal time
 r_terminal = vmax * t_terminal;
 nom_circle = circle(Pxavg, Pyavg, r_terminal);
-fimplicit(nom_circle, 'g', 'LineWidth', 1.5,'HandleVisibility','off');
+extDisp.fimplicit(nom_circle, 'g', 'LineWidth', 1.5,'HandleVisibility','off');
 
 inpose = [xp(1:2,:).'; xe(1:2,:).'].';
 initialPoseX = inpose(1,:);
@@ -223,8 +241,16 @@ for qq = 1:T
         r = r.step();
         [xps,yps] = getpatches(xp, 0.05);
         [xes,yes] = getpatches(xe, 0.05);
-        set(h1, 'XData', xes, 'YData', yes);
-        set(h2, 'XData', xps, 'YData', yps);
+        xyes = r.sim2rob([xes(:).';yes(:).']);
+        xyps = r.sim2rob([xps(:).';yps(:).']);
+        
+           
+        extDisp.set(h1, xyes(1,:), xyes(2,:));
+        xps = reshape(xyps(1,:),3,[]);
+        yps = reshape(xyps(2,:),3,[]);
+        for ii = 1:N 
+            extDisp.set(h2(ii,:), xps(ii,:), yps(ii, :));
+        end
         drawnow limitrate
     end
     
@@ -232,14 +258,15 @@ for qq = 1:T
     u = zeros(2, N);
     for jj = 1:M
         CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio);
-        set(h3(jj), 'Function', CRS{jj});
+        set(h3(1, jj), 'Function', CRS{jj});
+        set(h3(2, jj), 'Function', CRS{jj});
     end
 
     % Construct nominal control points
     slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2, jj));
-    poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
-    r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio, 1);
-    r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio, N);
+%     poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
+%     r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio, 1);
+%     r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], (T-qq)*dt*vmax/velRatio, N);
 
     poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
     if norm([Pxavg; Pyavg] - xe(1:2, jj)) > norm([Pxavg; Pyavg] - poin.')
@@ -578,31 +605,45 @@ for qq = 1:T
         xpur(qq, 2*ii-1:2*ii) = xp(1:2,ii).';
     end
     
-    
+    % record evaders positions
+    for jj = 1:M
+        xeva(qq,:) = xe(1:2,jj).';
+    end
+        
     h(qq) = min(hij);
     for ii = 1:N
         unorm(ii) = norm(u(:,ii));
     end
     umax(qq) = min(unorm);
-    
-    
-    % record evaders positions
-    for jj = 1:M
-        xeva(qq,:) = xe(1:2,jj).';
-    end
+
     
     set(h5, 'XData', xr(1,:), 'YData', xr(2,:));
     [xps,yps] = getpatches(xp, 0.05);
     [xes,yes] = getpatches(xe, 0.05);
-    set(h1, 'XData', xes, 'YData', yes);
-    set(h2, 'XData', xps, 'YData', yps);
+    
+    xyes = r.sim2rob([xes(:).';yes(:).']);
+    xyps = r.sim2rob([xps(:).';yps(:).']);
+    
+    xps = reshape(xyps(1,:),3,[]);
+    yps = reshape(xyps(2,:),3,[]);
+    for ii = 1:N 
+        extDisp.set(h2(ii,:), xps(ii,:), yps(ii, :));
+    end
+
+    extDisp.set(h1, xyes(1,:), xyes(2,:));        
+    
+%     set(h1, 'XData', xes, 'YData', yes);
+%     set(h2, 'XData', xps, 'YData', yps);
     drawnow limitrate
     
     last_closest = closest;
     dx = xp(1:2,1:N) - xe(1:2,1); 
     closest = 100000;
     
-%     pause(dt - 0.01)
+    if ~r.isSimulation
+        pause(dt - 0.01)
+    end
+    
     for jj = 1:M
         for ii = 1:N
             ev_dist = norm(dx(1:2,ii));
@@ -616,7 +657,7 @@ for qq = 1:T
         end
         
         if xe(1,jj) >= Pxmin && xe(1,jj) <= Pxmax && xe(2,jj) >= Pymin && xe(2,jj) <= Pymax || qq == 900%|| closest > last_closest
-            %disp('Evader evaded capture');
+            disp('Evader evaded capture');
             flag = -1;
         elseif flag == 1
             disp('Capture Successful');
@@ -632,6 +673,7 @@ for qq = 1:T
     if vid == true
         writeVideo(vidObj, getframe(gcf));
     end
+    
 end
 
 if vid == true
@@ -651,7 +693,7 @@ extDisp.plot(xpur(:,1), xpur(:,2), 'LineWidth', 2, 'Color', 'blue', 'LineStyle',
 extDisp.plot(xpur(:,3:2:end), xpur(:,4:2:end), 'LineWidth', 2, 'Color', 'blue', 'LineStyle', '--','HandleVisibility','off');
 extDisp.plot(xeva(:,1), xeva(:,2), 'LineWidth', 2, 'Color', 'red', 'LineStyle', '--','DisplayName','Evader Trajectory');
 
-legend('Location', 'northwest')
+extDisp.legend('Location', 'northwest');
 %figure(3);
 %plot([1:qq]*dt, umax(~isnan(umax)));
 %ylabel('min(u_i)');

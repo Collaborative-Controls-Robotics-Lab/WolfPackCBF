@@ -13,7 +13,7 @@ classdef CCRL_Robots
         initializing = true;
         achievedInitialPosition = false;
         achievedInitialHeading  = false;
-        robotDiameter = 0.02;%0.14;
+        robotDiameter
         
         controlScaleFactor = 1;
         maxIterations
@@ -31,9 +31,18 @@ classdef CCRL_Robots
         
         sim2rob
         rob2sim
+        scaleRatioSim2Rob
+        sim2rob_vel
         
         initialPoseX
         initialPoseY
+        initialPoseTheta = [pi pi pi pi 0]
+        robotThetaBias
+        
+        ViconClient
+        viconPose
+        robotIndicesVicon
+        K4Drv
     end
     
     methods
@@ -54,78 +63,12 @@ classdef CCRL_Robots
             simCenter = [(Dxmin + Dxmax)/2;(Dymin + Dymax)/2];
             robWorkspaceHalfHeight = 12*feet2meter/2;
             robWorkspaceHalfWidth = 17*feet2meter/2;
-            scaleRatioSim2Rob = min(robWorkspaceHalfHeight/(Dymax - Dymin),robWorkspaceHalfWidth/(Dxmax - Dxmin));
-            obj.sim2rob = @(xx) [xx(1,:)-simCenter(1);xx(2,:)-simCenter(2)]*scaleRatioSim2Rob;
-            obj.rob2sim = @(xx) [xx(1,:)/scaleRatioSim2Rob+simCenter(1);xx(2,:)/scaleRatioSim2Rob+simCenter(2)];
+            obj.scaleRatioSim2Rob = min(robWorkspaceHalfHeight/(Dymax - Dymin),robWorkspaceHalfWidth/(Dxmax - Dxmin));
+            obj.sim2rob = @(xx) [xx(1,:)-simCenter(1);xx(2,:)-simCenter(2)]*obj.scaleRatioSim2Rob;
+            obj.rob2sim = @(xx) [xx(1,:)/obj.scaleRatioSim2Rob+simCenter(1);xx(2,:)/obj.scaleRatioSim2Rob+simCenter(2)];
+            obj.sim2rob_vel = @(xx) xx * obj.scaleRatioSim2Rob;
             
-            
-            if isSimulation
-                obj.robotXY = diag([robWorkspaceHalfWidth, robWorkspaceHalfHeight]) * (2*rand(2, numRobots) - 1);
-                obj.robotTheta = 2*pi*rand(1,numRobots);
-            else
-                disp('>>>> Establishing connections with Vicon...')
-                [ViconClient,numTrackables] = ViconClientInit;
-                disp('>>>> Connections successful!')
-                
-                % Fetch initial data to create pose object
-                viconPose = ViconClientFetch(ViconClient);
-                
-                % Get the names of the trackable objects
-                viconNames = {viconPose.name};
-                
-                % Determine which objects are named K**
-                robotIndicesVicon = contains(viconNames,'K','IgnoreCase',true);
-                
-                % Determine the IP address of the robots
-                robotIP = cell2mat(viconNames(robotIndicesVicon).');
-                robotIP = robotIP(:,2:3);
-                
-                % Determine number of robots
-                obj.numRobots = size(robotIP,1);
-                disp(['>>>> Number of robots detected: ',num2str(numRobots)])
-                disp(['>>>> Evader robot: K', robotIP(numRobots,:)])
-                
-                % Initialize the robots
-                robotDriverVerbosity = 0;
-                disp( '>>>> Establishing connections with the robots...')
-                K4Drv = KheperaDriverInit(robotIP,[],robotDriverVerbosity);
-                disp('>>>> Connections successful!')
-                
-                % Get initial positions and headings
-                robotPose = viconPose(robotIndicesVicon);
-                robotPositionXYZ0 = [robotPose.positionXYZ];
-                robotAnglesXYZ0 = [robotPose.anglesXYZ];
-                
-                % Extract controllable states for convenience
-                robotXY0 = robotPositionXYZ0(1:2,:);
-                robotTheta0 = robotAnglesXYZ0(3,:); % Yaw
-                
-                % Send a stop command to the robots and wait for a moment
-                KheperaSetSpeed(K4Drv, 0, 0)
-                pause(0.1)
-                disp('>>>> Determining heading bias...')
-                
-                % Recalibrate to rule out bias. Make the robot move for a short time
-                KheperaSetSpeed(K4Drv, controlMaxSpeed/2, 0)
-                pause(0.5)
-                KheperaSetSpeed(K4Drv, 0, 0)
-                
-                % Get updated data
-                viconPose = ViconClientFetch(ViconClient,viconPose,1);
-                robotPose = viconPose(robotIndicesVicon);
-                robotPositionXYZ = [robotPose.positionXYZ];
-%               robotAnglesXYZ = [robotPose.anglesXYZ];
-                
-                % Extract controllable states for convenience
-                obj.robotXY = robotPositionXYZ(1:2,:);
-                obj.robotTheta = atan2(obj.robotXY(2,:)-robotXY0(2,:),obj.robotXY(1,:)-robotXY0(1,:));
-                robotThetaBias = atan2(sin(robotTheta0-robotTheta),cos(robotTheta0-robotTheta));
-                disp(['>>>>>>>> Robot vicon heading (degrees):',num2str(robotTheta0*180/pi)])
-                disp(['>>>>>>>> Robot actual heading (degrees):',num2str(robotTheta*180/pi)])
-                disp(['>>>>>>>> Robot heading bias (degrees):',num2str(robotThetaBias*180/pi)])
-            end
-            
-            
+            obj.robotDiameter = 0.14 / obj.scaleRatioSim2Rob;
             
             %% Initialize Control Utilities, Parameters and Gains
             % Select the number of iterations for the experiment.  This value is
@@ -160,6 +103,78 @@ classdef CCRL_Robots
             obj.si2uni = ...
                 create_si_to_uni_mapping('ProjectionDistance', 1*obj.robotDiameter);
             
+            
+            if isSimulation
+                obj.robotXY = diag([robWorkspaceHalfWidth, robWorkspaceHalfHeight]) * (2*rand(2, numRobots) - 1);
+                obj.robotTheta = 2*pi*rand(1,numRobots);
+            else
+                disp('>>>> Establishing connections with Vicon...')
+                [obj.ViconClient,numTrackables] = ViconClientInit;
+                disp('>>>> Connections successful!')
+                
+                % Fetch initial data to create pose object
+                obj.viconPose = ViconClientFetch(obj.ViconClient);
+                
+                % Get the names of the trackable objects
+                viconNames = {obj.viconPose.name};
+                
+                % Determine which objects are named K**
+                obj.robotIndicesVicon = contains(viconNames,'K','IgnoreCase',true);
+                
+                % Determine the IP address of the robots
+                robotIP = cell2mat(viconNames(obj.robotIndicesVicon).');
+                robotIP = robotIP(:,2:3);
+                
+                % Determine number of robots
+                obj.numRobots = size(robotIP,1);
+                disp(['>>>> Number of robots detected: ',num2str(numRobots)])
+                disp(['>>>> Evader robot: K', robotIP(numRobots,:)])
+                
+                % Initialize the robots
+                robotDriverVerbosity = 0;
+                disp( '>>>> Establishing connections with the robots...')
+                obj.K4Drv = KheperaDriverInit(robotIP,[],robotDriverVerbosity);
+                disp('>>>> Connections successful!')
+                
+                % Get initial positions and headings
+                robotPose = obj.viconPose(obj.robotIndicesVicon);
+                robotPositionXYZ0 = [robotPose.positionXYZ];
+                robotAnglesXYZ0 = [robotPose.anglesXYZ];
+                
+                % Extract controllable states for convenience
+                robotXY0 = robotPositionXYZ0(1:2,:);
+                robotTheta0 = robotAnglesXYZ0(3,:); % Yaw
+                
+                % Send a stop command to the robots and wait for a moment
+                KheperaSetSpeed(obj.K4Drv, 0, 0)
+                pause(0.1)
+                disp('>>>> Determining heading bias...')
+                
+                % Recalibrate to rule out bias. Make the robot move for a short time
+                cal_lim_v = obj.linearVelLimit/2;
+                KheperaSetSpeed(obj.K4Drv, cal_lim_v, 0)
+                pause(0.5)
+                KheperaSetSpeed(obj.K4Drv, 0, 0)
+                
+                % Get updated data
+                viconPose = ViconClientFetch(obj.ViconClient,obj.viconPose,1);
+                robotPose = viconPose(obj.robotIndicesVicon);
+                robotPositionXYZ = [robotPose.positionXYZ];
+%               robotAnglesXYZ = [robotPose.anglesXYZ];
+                
+                % Extract controllable states for convenience
+                obj.robotXY = robotPositionXYZ(1:2,:);
+                obj.robotTheta = atan2(obj.robotXY(2,:)-robotXY0(2,:),obj.robotXY(1,:)-robotXY0(1,:));
+                obj.robotThetaBias = atan2(sin(robotTheta0-obj.robotTheta),cos(robotTheta0-obj.robotTheta));
+                disp(['>>>>>>>> Robot vicon heading (degrees):',num2str(robotTheta0*180/pi)])
+                disp(['>>>>>>>> Robot actual heading (degrees):',num2str(obj.robotTheta*180/pi)])
+                disp(['>>>>>>>> Robot heading bias (degrees):',num2str(obj.robotThetaBias*180/pi)])
+            end
+            
+            
+            
+            
+            
         end
         
         function [XYpos, Theta] = getXYTheta(obj)
@@ -168,17 +183,17 @@ classdef CCRL_Robots
                 Theta = obj.robotTheta;
             else
                 % Grabbing new data
-                viconPose = ViconClientFetch(ViconClient,viconPose,1);
-                robotPose = viconPose(robotIndicesVicon);
+                obj.viconPose = ViconClientFetch(obj.ViconClient,obj.viconPose,1);
+                robotPose = obj.viconPose(obj.robotIndicesVicon);
                 robotPositionXYZ = [robotPose.positionXYZ];
                 robotAnglesXYZ = [robotPose.anglesXYZ];
                 
                 % Extract controllable states for convenience
                 obj.robotXY = robotPositionXYZ(1:2,:);
-                obj.robotTheta = robotAnglesXYZ(3,:)-robotThetaBias; % Yaw
+                obj.robotTheta = robotAnglesXYZ(3,:)-obj.robotThetaBias; % Yaw
                 
                 
-                XYpos = obj.robotXY;
+                XYpos = obj.rob2sim(obj.robotXY);
                 Theta = obj.robotTheta;
             end
         end
@@ -224,17 +239,17 @@ classdef CCRL_Robots
 %             end
         end
         
-        function [obj, dxu] = goToInitialPositions(obj)
+        function [obj, dxu] = goToInitialPositions(obj, XYPos, Theta)
             % Initialize robot positions and heading
             if ~obj.achievedInitialPosition
                 % Go to goal
-                dxi = obj.controlScaleFactor*obj.positionController(obj.robotXY,[obj.initialPoseX; obj.initialPoseY]);
+                dxi = obj.controlScaleFactor*obj.positionController(XYPos,[obj.initialPoseX; obj.initialPoseY]);
                 % Add collision avoidance
-                dxi = obj.barrierCertificate(dxi,[obj.robotXY;obj.robotTheta]);
+                dxi = obj.barrierCertificate(dxi,[XYPos;Theta]);
                 % Convert to unicycle model
-                dxu = obj.si2uni(dxi,[obj.robotXY;obj.robotTheta]);
+                dxu = obj.si2uni(dxi,[XYPos;Theta]);
                 % Check if they've converged
-                robotsDone = hypot(obj.robotXY(1,:)-obj.initialPoseX,obj.robotXY(2,:)-obj.initialPoseY)<obj.robotDiameter/4;
+                robotsDone = hypot(XYPos(1,:)-obj.initialPoseX,XYPos(2,:)-obj.initialPoseY)<obj.robotDiameter/4;
                 % Set LED's to yellow if they've converged
 %                 r.set_left_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
 %                 r.set_right_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
@@ -249,7 +264,7 @@ classdef CCRL_Robots
                 if ~obj.achievedInitialHeading
                     % Turn to your corresponding headings
 %                     dxu(2,1:numPursuers) = pi-map_angle(obj.robotTheta(1:numPursuers));
-                    dxu(2,:) = -obj.robotTheta(:);
+                    dxu(2,:) = obj.initialPoseTheta(:)-Theta(:);
                     % Check if they've converged
                     robotsDone = abs(dxu(2,:))<1*pi/180; % Within 1 degree
                     % Set LED's to green if they've converged
@@ -299,12 +314,19 @@ classdef CCRL_Robots
         end
         
         function obj = set_velocities(obj, dxu)
+            % Saturate the control to avoid actuator limits
+            dxu(1,[dxu(1,:)>obj.linearVelLimit false]) = obj.linearVelLimit;
+            dxu(1,[dxu(1,:)<-obj.linearVelLimit false])= -obj.linearVelLimit;
+            dxu(2,dxu(2,:)>obj.angularVelLimit) = obj.angularVelLimit;
+            dxu(2,dxu(2,:)<-obj.angularVelLimit) = -obj.angularVelLimit;
+            
+            
             if obj.isSimulation
                 obj.robotVelLin = dxu(1,:);
                 obj.robotVelTheta = dxu(2, :);
             else
                 % Send velocity updates to robots
-                KheperaSetSpeed(K4Drv, dxu(1,:), dxu(2,:))
+                KheperaSetSpeed(obj.K4Drv, dxu(1,:), dxu(2,:))
                 % KheperaSetSpeed(K4Drv,0,0)
             end
         
@@ -320,11 +342,11 @@ classdef CCRL_Robots
         function obj = stop(obj)
             if ~obj.isSimulation
                 % Stop all robots at the end
-                KheperaSetSpeed(K4Drv, 0, 0)
+                KheperaSetSpeed(obj.K4Drv, 0, 0)
                 % Disconnect the Vicon client
-                ViconClientDisconnect(ViconClient)
+                ViconClientDisconnect(obj.ViconClient)
                 % Disconnect the Khepera driver client
-                KheperaDriverDisconnect(K4Drv)
+                KheperaDriverDisconnect(obj.K4Drv)
                 % Close the "stop" window it is still open
             end
 
