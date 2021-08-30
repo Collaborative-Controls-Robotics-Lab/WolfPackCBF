@@ -13,7 +13,8 @@ classdef CCRL_Robots
         initializing = true;
         achievedInitialPosition = false;
         achievedInitialHeading  = false;
-        robotDiameter
+        robotDiameterRob
+        robotDiameterSim
         
         controlScaleFactor = 1;
         maxIterations
@@ -43,6 +44,9 @@ classdef CCRL_Robots
         viconPose
         robotIndicesVicon
         K4Drv
+        looptimer
+        previous_time = 0
+        dynamicTime
     end
     
     methods
@@ -51,12 +55,20 @@ classdef CCRL_Robots
             %   Detailed explanation goes here
             
             % Initialize parameters and data fields
+            obj.looptimer = tic();
+            obj.previous_time = obj.getTime;
+            
             obj.numRobots = numRobots;
             obj.isSimulation = isSimulation;
             obj.robotXY = zeros(2, numRobots);
             obj.robotTheta = zeros(2, numRobots);
             obj.initialPoseX = initialPoseX;
             obj.initialPoseY = initialPoseY;
+            if dt == 0 || ~isSimulation
+                obj.dynamicTime = true;
+            else
+                obj.dynamicTime = false;
+            end
             
             % Transform between workspaces
             feet2meter = unitsratio('meter', 'feet');
@@ -68,7 +80,8 @@ classdef CCRL_Robots
             obj.rob2sim = @(xx) [xx(1,:)/obj.scaleRatioSim2Rob+simCenter(1);xx(2,:)/obj.scaleRatioSim2Rob+simCenter(2)];
             obj.sim2rob_vel = @(xx) xx * obj.scaleRatioSim2Rob;
             
-            obj.robotDiameter = 0.14 / obj.scaleRatioSim2Rob;
+            obj.robotDiameterRob = 0.14;
+            obj.robotDiameterSim = obj.robotDiameterRob / obj.scaleRatioSim2Rob;
             
             %% Initialize Control Utilities, Parameters and Gains
             % Select the number of iterations for the experiment.  This value is
@@ -83,9 +96,9 @@ classdef CCRL_Robots
             % Fixed time step for simulation
             obj.dtSim = dt;
             % Safety distance (barrier ceritificates)
-            obj.barrierSafetyDist = 1.5 * obj.robotDiameter;
+            obj.barrierSafetyDist = 0.5 * obj.robotDiameterRob;
             % Termination condition distance
-            obj.safety_radius_tight = 1.75 * obj.robotDiameter;
+            obj.safety_radius_tight = 0.5 * obj.robotDiameterRob;
             % Gain for single integrator to unicycle conversion
             obj.si2uniGain = 10;
             % Set actuator limits
@@ -101,7 +114,7 @@ classdef CCRL_Robots
             % barrierCertificate = @(x,y) x;
             % Generate a single integrator model to unicycle model control conversion
             obj.si2uni = ...
-                create_si_to_uni_mapping('ProjectionDistance', 1*obj.robotDiameter);
+                create_si_to_uni_mapping('ProjectionDistance', 1*obj.robotDiameterRob);
             
             
             if isSimulation
@@ -249,7 +262,7 @@ classdef CCRL_Robots
                 % Convert to unicycle model
                 dxu = obj.si2uni(dxi,[XYPos;Theta]);
                 % Check if they've converged
-                robotsDone = hypot(XYPos(1,:)-obj.initialPoseX,XYPos(2,:)-obj.initialPoseY)<obj.robotDiameter/4;
+                robotsDone = hypot(XYPos(1,:)-obj.initialPoseX,XYPos(2,:)-obj.initialPoseY)<obj.robotDiameterSim/4;
                 % Set LED's to yellow if they've converged
 %                 r.set_left_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
 %                 r.set_right_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
@@ -264,7 +277,7 @@ classdef CCRL_Robots
                 if ~obj.achievedInitialHeading
                     % Turn to your corresponding headings
 %                     dxu(2,1:numPursuers) = pi-map_angle(obj.robotTheta(1:numPursuers));
-                    dxu(2,:) = obj.initialPoseTheta(:)-Theta(:);
+                    dxu(2,:) = sin(obj.initialPoseTheta(:)-Theta(:));
                     % Check if they've converged
                     robotsDone = abs(dxu(2,:))<1*pi/180; % Within 1 degree
                     % Set LED's to green if they've converged
@@ -282,6 +295,8 @@ classdef CCRL_Robots
                     % Done initializing, start a clock using odometry
                     %
                     obj.initializing = false;
+                    obj.looptimer = tic();
+                    obj.previous_time = 0;
                     dxu = zeros(2, obj.numRobots);
 
                     % Initializing CRS variables and timer
@@ -315,10 +330,10 @@ classdef CCRL_Robots
         
         function obj = set_velocities(obj, dxu)
             % Saturate the control to avoid actuator limits
-            dxu(1,[dxu(1,:)>obj.linearVelLimit false]) = obj.linearVelLimit;
-            dxu(1,[dxu(1,:)<-obj.linearVelLimit false])= -obj.linearVelLimit;
-            dxu(2,dxu(2,:)>obj.angularVelLimit) = obj.angularVelLimit;
-            dxu(2,dxu(2,:)<-obj.angularVelLimit) = -obj.angularVelLimit;
+%             dxu(1,[dxu(1,:)>obj.linearVelLimit false]) = obj.linearVelLimit;
+%             dxu(1,[dxu(1,:)<-obj.linearVelLimit false])= -obj.linearVelLimit;
+%             dxu(2,dxu(2,:)>obj.angularVelLimit) = obj.angularVelLimit;
+%             dxu(2,dxu(2,:)<-obj.angularVelLimit) = -obj.angularVelLimit;
             
             
             if obj.isSimulation
@@ -333,6 +348,14 @@ classdef CCRL_Robots
         end
         
         function obj = step(obj)
+            if obj.dynamicTime
+                t = obj.getTime();
+                obj.dtSim = t - obj.previous_time;
+                obj.previous_time = t;
+            else
+                obj.previous_time = obj.previous_time + obj.dtSim;
+            end
+            
             if obj.isSimulation
                 obj.robotTheta = obj.robotTheta + obj.robotVelTheta * obj.dtSim;
                 obj.robotXY = obj.robotXY + [cos(obj.robotTheta); sin(obj.robotTheta)] .* obj.robotVelLin * obj.dtSim;
@@ -350,6 +373,15 @@ classdef CCRL_Robots
                 % Close the "stop" window it is still open
             end
 
+        end
+        
+        function t = getTime(obj)
+            if ~obj.dynamicTime
+                t = obj.previous_time;
+            else
+                t = toc(obj.looptimer);
+            end
+            
         end
         
     end

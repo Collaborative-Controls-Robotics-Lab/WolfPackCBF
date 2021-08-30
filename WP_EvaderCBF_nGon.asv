@@ -7,6 +7,7 @@
 %%
 close all
 vid = false;
+isSimulation = false;
 rng(140)
 
 % Number of evaders
@@ -44,9 +45,9 @@ closest = 100000;
 velRatio = 0.5;
 
 % Final time
-tf = 25;
+t_final = 25;
 % Number of iterations
-T = tf/dt;
+T = t_final/dt;
 
 
 % Set initial evader positions and headings
@@ -57,10 +58,10 @@ xe = [-0.12;
 % Terminal time
 t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
 % Dist to span at terminal time
-L = ((vmax/velRatio*(tf - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(tf - t_terminal)
+L = ((vmax/velRatio*(t_final - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final - t_terminal)
 
 % Number of pursuers
-N = numAgents(velRatio, epsilon, L)
+N = 4%numAgents(velRatio, epsilon, L)
 L_pred = distSpanned(velRatio, epsilon, N)
 
 
@@ -113,7 +114,7 @@ de = cell(N+2,1);
 neigh = zeros(N, 2);
 
 
-r = CCRL_Robots(N + M, true, Dxmin, Dxmax, Dymin, Dymax, [xp(1,:) xe(1,:)], [xp(2,:) xe(2,:)], dt);
+r = CCRL_Robots(N + M, isSimulation, Dxmin, Dxmax, Dymin, Dymax, [xp(1,:) xe(1,:)], [xp(2,:) xe(2,:)], dt);
 
 
 
@@ -222,11 +223,11 @@ inpose = [xp(1:2,:).'; xe(1:2,:).'].';
 initialPoseX = inpose(1,:);
 initialPoseY = inpose(2, :);
 
-
+max_iterations = 1000000 %% HORRIBLE HACK
 
 
 %% Algorithm loop
-for qq = 1:T
+for qq = 1:max_iterations
     % Update position and orientation
     [xy_all, theta_all] = r.getXYTheta();
     xp = [xy_all(:, 1:end-M); theta_all(:, 1:end-M)];
@@ -236,7 +237,7 @@ for qq = 1:T
         [xy_all, theta_all] = r.getXYTheta();
         xp = [xy_all(:, 1:end-M); theta_all(:, 1:end-M)];
         xe = [xy_all(:, N+1:end); theta_all(:, N+1:end)];
-        [r, dxu] = r.goToInitialPositions();
+        [r, dxu] = r.goToInitialPositions(xy_all, theta_all);
         r = r.set_velocities(dxu); 
         r = r.step();
         [xps,yps] = getpatches(xp, 0.05);
@@ -246,13 +247,15 @@ for qq = 1:T
         
            
         extDisp.set(h1, xyes(1,:), xyes(2,:));
-        xps = reshape(xyps(1,:),3,[]);
-        yps = reshape(xyps(2,:),3,[]);
+        xps = reshape(xyps(1,:),3,[]).';
+        yps = reshape(xyps(2,:),3,[]).';
         for ii = 1:N 
             extDisp.set(h2(ii,:), xps(ii,:), yps(ii, :));
         end
         drawnow limitrate
     end
+    
+    
     
     %% Main control loop
     u = zeros(2, N);
@@ -309,7 +312,7 @@ for qq = 1:T
     He{N+1} = zeros(2);
     Aie(N+1,:) = (xe(1:2, 1) - [Pxavg; Pyavg]).'/norm(xe(1:2, 1) - [Pxavg; Pyavg]);
     ke{N+1} = Aie(N+1,:).';
-    bie(N+1) = -uvmax + 1e2*(tf - (qq)*dt)*uvmax - norm(xe(1:2, 1) - [Pxavg; Pyavg])^3;
+    bie(N+1) = -uvmax + 1e2*(t_final - (qq)*dt)*uvmax - norm(xe(1:2, 1) - [Pxavg; Pyavg])^3;
     de{N+1} = -bie(N+1);
 
     He{N+2} = 2*eye(2);
@@ -376,7 +379,7 @@ for qq = 1:T
 
     for jj = 1:M
 
-        if (tf - (qq)*dt)*uvmax <= 1.08*norm(xe(1:2,jj) - [Pxavg; Pyavg])
+        if (t_final - (qq)*dt)*uvmax <= 1.08*norm(xe(1:2,jj) - [Pxavg; Pyavg])
             ue(:,jj) = ([Pxavg; Pyavg] - xe(1:2,jj))/norm(([Pxavg; Pyavg] - xe(1:2,jj)))*uvmax;
             flag = 1;
         else
@@ -582,6 +585,7 @@ for qq = 1:T
 %         end
 
     dxi = [u ue];
+    dxi = r.sim2rob_vel(dxi);
     dxu = r.si2uni(dxi,[r.robotXY;r.robotTheta]);
 
 %     toc
@@ -589,13 +593,7 @@ for qq = 1:T
      %% Send velocities to agents
      % Convert to unicycle model
      
-    % Saturate the control to avoid actuator limits
-%     dxu(1,[dxu(1,1:numPursuers)>vmax false]) = vmax;
-%     dxu(1,[dxu(1,1:numPursuers)<-vmax false])= -vmax;
-%     dxu(1,[false(1,numPursuers) dxu(1,numRobots)>vmax/vratio]) = vmax/vratio;
-%     dxu(1,[false(1,numPursuers) dxu(1,numRobots)<-vmax/vratio]) = -vmax/vratio;
-%     dxu(2,dxu(2,:)>angularVelLimit) = angularVelLimit;
-%     dxu(2,dxu(2,:)<-angularVelLimit) = -angularVelLimit;
+
     r = r.set_velocities(dxu); 
     r = r.step();
     
@@ -624,8 +622,8 @@ for qq = 1:T
     xyes = r.sim2rob([xes(:).';yes(:).']);
     xyps = r.sim2rob([xps(:).';yps(:).']);
     
-    xps = reshape(xyps(1,:),3,[]);
-    yps = reshape(xyps(2,:),3,[]);
+    xps = reshape(xyps(1,:),3,[]).';
+    yps = reshape(xyps(2,:),3,[]).';
     for ii = 1:N 
         extDisp.set(h2(ii,:), xps(ii,:), yps(ii, :));
     end
@@ -640,7 +638,7 @@ for qq = 1:T
     dx = xp(1:2,1:N) - xe(1:2,1); 
     closest = 100000;
     
-    if ~r.isSimulation
+    if ~(r.isSimulation)
         pause(dt - 0.01)
     end
     
