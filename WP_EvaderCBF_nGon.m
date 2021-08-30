@@ -7,7 +7,7 @@
 %%
 close all
 vid = false;
-isSimulation = true;
+isSimulation = false;
 rng(140)
 
 % Number of evaders
@@ -16,23 +16,23 @@ M = 1;
 dt = 0;
 
 % Capture distance
-epsilon = 0.02;
+epsilon = 0.09;
 k = 1;
 cvxflag = 0;
 
 % Domain
-Dxmin = -0.3;
-Dxmax = 0.9;
-Dymin = -0.5;
-Dymax = 0.5;
+Dxmin = -0.5;
+Dxmax = 1.2;
+Dymin = -0.6;
+Dymax = 0.6;
 % Dxmin = -2.5908;
 % Dxmax = 2.5908;
 % Dymin = -1.8288;
 % Dymax = 1.8288;
 
 % Target set
-Pxmin = 0.525;
-Pxmax = 0.575;
+Pxmin = 0.925;
+Pxmax = 0.975;
 Pymin = -0.025;
 Pymax = 0.025;
 Pxavg = 0.5*(Pxmin + Pxmax);
@@ -42,17 +42,17 @@ Pyavg = 0.5*(Pymin + Pymax);
 vmax = 0.02;
 wmax = 2*pi;
 closest = 100000;
-velRatio = 0.5;
+velRatio = 0.4;
 
 % Final time
-t_final = 25;
+t_final = 30;
 % Number of iterations
 max_iterations = 1e5 %% HACK
 
 
 % Set initial evader positions and headings
 % xe = [-0.4*ones(1,M); .0*ones(1, M); zeros(1,M)];
-xe = [-0.12;
+xe = [-0.3;
    -0.0; 0];
 
 % Terminal time
@@ -61,7 +61,7 @@ t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
 L = ((vmax/velRatio*(t_final - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final - t_terminal)
 
 % Number of pursuers
-N = numAgents(velRatio, epsilon, L)
+N = 4;%numAgents(velRatio, epsilon, L)
 L_pred = distSpanned(velRatio, epsilon, N)
 
 
@@ -80,7 +80,7 @@ pem = [1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0;];
 
 % set initial pursuer position
 %(-vmax*t_terminal + Pxavg)
-xp = [Pxmin*ones(1,N); linspace(-0.25, 0.25, N); 0*ones(1,N)];
+xp = [Pxmin*ones(1,N); linspace(-0.5, 0.5, N); 0*ones(1,N)];
 %xp = [0.4*ones(1,N) + 0.1*rand(1,N); linspace(-0.13, 0.15, N); pi*ones(1,N)];
 
 % Virtual pursuers on the CRS boundary
@@ -119,6 +119,7 @@ r = CCRL_Robots(N + M, isSimulation, Dxmin, Dxmax, Dymin, Dymax, [xp(1,:) xe(1,:
 
 
 if vid == true
+    cam = webcam('Logitech BRIO');
     vidObj = VideoWriter('test', 'MPEG-4');
     vidObj.Quality = 75;
     vidObj.FrameRate = 50;
@@ -126,9 +127,10 @@ if vid == true
 end
 
 % Plot everything
-figure(1);
+hFig = figure(1);
+set(hFig,'color','w');
 hold on; 
-axis equal;
+axis equal off;
 xlim([Dxmin Dxmax]);
 ylim([Dymin Dymax]);
 %% Visualization Elements
@@ -136,14 +138,14 @@ ylim([Dymin Dymax]);
 load('projectiveTransform.mat','H')
 
 % Construct an extended display object
-extDisp = extendedDisplay(H,gcf);
+extDisp = extendedDisplay(H,hFig);
 
 
 %%
 if ~r.isSimulation
-    set(1,'Units','normalized','color','k','Position',[1 1/3 2/3 2/3]) % on TV
+    set(hFig,'Units','normalized','color','w','Position',[1 1/3 2/3 2/3]) % on TV
 else
-    set(1,'color','k','Position',[100 180 700*1.8 360*1.8])
+    set(hFig,'color','w','Position',[100 180 700*1.8 360*1.8])
 end
 
 
@@ -229,12 +231,12 @@ initialPoseY = inpose(2, :);
 %% Algorithm loop
 for qq = 1:max_iterations
     % Update position and orientation
-    [xy_all, theta_all] = r.getXYTheta();
+    [r, xy_all, theta_all] = r.getXYTheta();
     xp = [xy_all(:, 1:end-M); theta_all(:, 1:end-M)];
     xe = [xy_all(:, N+1:end); theta_all(:, N+1:end)];
     
     while r.initializing
-        [xy_all, theta_all] = r.getXYTheta();
+        [r, xy_all, theta_all] = r.getXYTheta();
         xp = [xy_all(:, 1:end-M); theta_all(:, 1:end-M)];
         xe = [xy_all(:, N+1:end); theta_all(:, N+1:end)];
         [r, dxu] = r.goToInitialPositions(xy_all, theta_all);
@@ -384,7 +386,7 @@ for qq = 1:max_iterations
 
         if tgo*uvmax <= 1.08*norm(xe(1:2,jj) - [Pxavg; Pyavg])
             ue(:,jj) = ([Pxavg; Pyavg] - xe(1:2,jj))/norm(([Pxavg; Pyavg] - xe(1:2,jj)))*uvmax;
-%             flag = 1;
+            flag = 1;
         else
 %             nonlconstr = @(x)quadconstr(x,He,ke,de);
             ue(:,jj) = ([Pxavg; Pyavg] - xe(1:2,jj))/norm(([Pxavg; Pyavg] - xe(1:2,jj)))*uvmax;
@@ -566,7 +568,7 @@ for qq = 1:max_iterations
                     % weighted Consensus result
                     if norm(z) > vmax && cvxflag == 0
                         z = ui/norm(ui)*vmax;
-                        cvxflag = 1;
+%                         cvxflag = 1;
                     end
 
                     u(:,ii) = u(:,ii) + pem(ii,jj) * z;
@@ -588,11 +590,8 @@ for qq = 1:max_iterations
 %         end
 
     dxi = [u ue];
-    disp(dxi)
     dxi = r.sim2rob_vel(dxi);
-    disp(dxi)
     dxu = r.si2uni(dxi,[r.robotXY;r.robotTheta]);
-    disp(dxu)
 
 %     toc
     
@@ -675,7 +674,8 @@ for qq = 1:max_iterations
     end
     
     if vid == true
-        writeVideo(vidObj, getframe(gcf));
+        frame = cam.snapshot;
+        writeVideo(vidObj, frame);
     end
     
 end
@@ -689,7 +689,7 @@ end
 %xlabel('Time');
 
 % hFigStopLoop.Clear();
-clear hFigStopLoop;
+% clear hFigStopLoop;
 r = r.stop();
 
 

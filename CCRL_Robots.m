@@ -73,9 +73,9 @@ classdef CCRL_Robots
             % Transform between workspaces
             feet2meter = unitsratio('meter', 'feet');
             simCenter = [(Dxmin + Dxmax)/2;(Dymin + Dymax)/2];
-            robWorkspaceHalfHeight = 12*feet2meter/2;
-            robWorkspaceHalfWidth = 17*feet2meter/2;
-            obj.scaleRatioSim2Rob = min(robWorkspaceHalfHeight/(Dymax - Dymin),robWorkspaceHalfWidth/(Dxmax - Dxmin));
+            robWorkspaceHeight = 12*feet2meter;
+            robWorkspaceWidth = 17*feet2meter;
+            obj.scaleRatioSim2Rob = min(robWorkspaceHeight/(Dymax - Dymin),robWorkspaceWidth/(Dxmax - Dxmin));
             obj.sim2rob = @(xx) [xx(1,:)-simCenter(1);xx(2,:)-simCenter(2)]*obj.scaleRatioSim2Rob;
             obj.rob2sim = @(xx) [xx(1,:)/obj.scaleRatioSim2Rob+simCenter(1);xx(2,:)/obj.scaleRatioSim2Rob+simCenter(2)];
             obj.sim2rob_vel = @(xx) xx * obj.scaleRatioSim2Rob;
@@ -103,7 +103,7 @@ classdef CCRL_Robots
             obj.si2uniGain = 10;
             % Set actuator limits
             % angularVelLimit = 3*controlMaxSpeed;
-            obj.angularVelLimit = 2*pi;
+            obj.angularVelLimit = pi;
             % linearVelLimit = 0.49;
             % linearVelLimit = 0.6*controlMaxSpeed; % 0.8 ORIGINAL
             obj.linearVelLimit = 0.3;%2/3; % 0.8 ORIGINAL
@@ -114,11 +114,11 @@ classdef CCRL_Robots
             % barrierCertificate = @(x,y) x;
             % Generate a single integrator model to unicycle model control conversion
             obj.si2uni = ...
-                create_si_to_uni_mapping('ProjectionDistance', 1*obj.robotDiameterRob);
+                create_si_to_uni_mapping('ProjectionDistance', obj.robotDiameterRob);
             
             
             if isSimulation
-                obj.robotXY = diag([robWorkspaceHalfWidth, robWorkspaceHalfHeight]) * (2*rand(2, numRobots) - 1);
+                obj.robotXY = diag([robWorkspaceWidth, robWorkspaceHeight]) * (2*rand(2, numRobots) - 1);
                 obj.robotTheta = 2*pi*rand(1,numRobots);
             else
                 disp('>>>> Establishing connections with Vicon...')
@@ -190,7 +190,7 @@ classdef CCRL_Robots
             
         end
         
-        function [XYpos, Theta] = getXYTheta(obj)
+        function [obj, XYpos, Theta] = getXYTheta(obj)
             if obj.isSimulation
                 XYpos = obj.robotXY;
                 Theta = obj.robotTheta;
