@@ -11,12 +11,12 @@ isSimulation = false;
 rng(140)
 
 % Number of evaders
-M = 1;
+numEvaders = 1;
 % Integration time
 dt = 0;
 
 % Capture distance
-epsilon = 0.09;
+epsilon = 0.05;
 k = 1;
 cvxflag = 0;
 
@@ -42,18 +42,18 @@ Pyavg = 0.5*(Pymin + Pymax);
 vmax = 0.02;
 wmax = 2*pi;
 closest = 100000;
-velRatio = 0.4;
+velRatio = 0.4;%0.5;
 
 % Final time
 t_final = 30;
 % Number of iterations
-max_iterations = 1e5 %% HACK
+max_iterations = 1e4 %% HACK
 
 
 % Set initial evader positions and headings
 % xe = [-0.4*ones(1,M); .0*ones(1, M); zeros(1,M)];
 xe = [-0.3;
-   -0.0; 0];
+   0; 0];
 
 % Terminal time
 t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
@@ -61,8 +61,8 @@ t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
 L = ((vmax/velRatio*(t_final - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final - t_terminal)
 
 % Number of pursuers
-N = 4;%numAgents(velRatio, epsilon, L)
-L_pred = distSpanned(velRatio, epsilon, N)
+numPursuers = 2;%numAgents(velRatio, epsilon, L);%4;%
+L_pred = distSpanned(velRatio, epsilon, numPursuers)
 
 
 %% Initialize the System
@@ -70,60 +70,63 @@ L_pred = distSpanned(velRatio, epsilon, N)
 
 % State Vectors
 % Pursuers
-xp = zeros(3,N);
-adj = zeros(N, N);
+xp = zeros(3,numPursuers);
+adj = zeros(numPursuers, numPursuers);
 
 
 % Pursuer-Evader Map
-pem = zeros(N,M);
+pem = zeros(numPursuers,numEvaders);
 pem = [1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0;];
 
 % set initial pursuer position
 %(-vmax*t_terminal + Pxavg)
-xp = [Pxmin*ones(1,N); linspace(-0.5, 0.5, N); 0*ones(1,N)];
+xp = [Pxmin*ones(1,numPursuers) - 0.05; linspace(-0.15, 0.15, numPursuers); pi*ones(1,numPursuers)];
 %xp = [0.4*ones(1,N) + 0.1*rand(1,N); linspace(-0.13, 0.15, N); pi*ones(1,N)];
 
 % Virtual pursuers on the CRS boundary
-xr = zeros(2, 2*M);
-nOnes = ones(N,1);
-adj = diag(nOnes(1:N-1), -1) + diag(nOnes(1:N-1), 1);
+xr = nan(2, 2*numEvaders);
+nOnes = ones(numPursuers,1);
+adj = diag(nOnes(1:numPursuers-1), -1) + diag(nOnes(1:numPursuers-1), 1);
 %xp = [0.4 0.4; 0.1 -0.3; pi pi]
 
 % Initialize projections onto defense surface
-p = zeros(1,N);
-pCoord = zeros(2,N);
-c = zeros(1,N);
-cCoord = zeros(2,N);
-pVoronoi = zeros(2,N);
+p = zeros(1,numPursuers);
+pCoord = zeros(2,numPursuers);
+c = zeros(1,numPursuers);
+cCoord = zeros(2,numPursuers);
+pVoronoi = zeros(2,numPursuers);
 sigmaC = nan(1,max_iterations);
 h = nan(1,max_iterations);
 umax = nan(1,max_iterations);
-u = zeros(2*N,1);
-unorm = zeros(N,1);
-Aij = zeros(N-1, 2*N);
-Aie = zeros(N+1, 2);
-bie = zeros(N+1, 1);
-bij = zeros(1, N-1);
-hij = zeros(1, N-1);
+u = zeros(2*numPursuers,1);
+unorm = zeros(numPursuers,1);
+Aij = zeros(numPursuers-1, 2*numPursuers);
+Aie = zeros(numPursuers+1, 2);
+bie = zeros(numPursuers+1, 1);
+bij = zeros(1, numPursuers-1);
+hij = zeros(1, numPursuers-1);
 flag = 0;
-midpt = zeros(2, N-1);
-He = cell(N+2,1);
-ke = cell(N+2,1);
-de = cell(N+2,1);
+midpt = zeros(2, numPursuers-1);
+He = cell(numPursuers+2,1);
+ke = cell(numPursuers+2,1);
+de = cell(numPursuers+2,1);
 
-neigh = zeros(N, 2);
+neigh = zeros(numPursuers, 2);
 
 
-r = CCRL_Robots(N + M, isSimulation, Dxmin, Dxmax, Dymin, Dymax, [xp(1,:) xe(1,:)], [xp(2,:) xe(2,:)], dt);
+r = CCRL_Robots(numPursuers + numEvaders, isSimulation, Dxmin, Dxmax, Dymin, Dymax, [xp, xe], dt);
 
 
 
 if vid == true
     cam = webcam('Logitech BRIO');
-    vidObj = VideoWriter('test', 'MPEG-4');
-    vidObj.Quality = 75;
-    vidObj.FrameRate = 50;
-    open(vidObj);
+    cam.Resolution = cam.AvailableResolutions{end-3}; % Highest resolution
+    frameCropY = 161:820; % Depends of camera positioning
+    
+    frames2write(max_iterations) = struct('cdata',[],'colormap',[]);
+    
+    vidObj = VideoWriter(['test_',datestr(datetime('now'),'yyyymmdd_HHMMSS')], 'MPEG-4');
+    frameCount = 1;
 end
 
 % Plot everything
@@ -131,8 +134,11 @@ hFig = figure(1);
 set(hFig,'color','w');
 hold on; 
 axis equal off;
-xlim([Dxmin Dxmax]);
-ylim([Dymin Dymax]);
+% xlim([Dxmin Dxmax]);
+% ylim([Dymin Dymax]);
+domBounds = r.domainBoundaries;
+xlim(domBounds(1:2));
+ylim(domBounds(3:4));
 %% Visualization Elements
 % Load projector calibration matrix
 load('projectiveTransform.mat','H')
@@ -150,48 +156,58 @@ end
 
 
 % Target set
-extDisp.patch([Pxmax Pxmax Pxmin Pxmin], [Pymax Pymin Pymin Pymax], 'FaceColor', 'green', 'HandleVisibility','off');
+targetSet = r.sim2rob([Pxmax Pxmax Pxmin Pxmin; Pymax Pymin Pymin Pymax]);
+extDisp.patch(targetSet(1,:), targetSet(2,:), 'FaceColor', 'green', 'HandleVisibility','off');
 
 
 % Evader
-[xs,ys] = getpatches(xe,0.05);
-h1 = extDisp.patch(xs, ys, 'FaceColor', 'red', 'DisplayName', 'Evader');
+[xes,yes] = getpatches(xe,0.05);
+xyes = r.sim2rob([xes(:),yes(:)].');
+xes = reshape(xyes(1,:),3,[]);
+yes = reshape(xyes(2,:),3,[]);
+hEvaders = patch(extDisp.hAxesTV, 'XData', xes, 'YData', yes, 'FaceColor', 'red', 'DisplayName', 'Evader');
 
 % Pursuers
-[xs,ys] = getpatches(xp,0.05);
-h2 = gobjects(N, 2);
-xps = reshape(xs,3,[]);
-yps = reshape(ys,3,[]);
-for ii = 1:N
-    h2(ii,:) = extDisp.patch(xps,yps, 'FaceColor', 'blue', 'DisplayName', 'Pursuers');
+[xps,yps] = getpatches(xp,0.05);
+hPursuers = gobjects(numPursuers, 1);
+xyps = r.sim2rob([xps(:),yps(:)].');
+xps = reshape(xyps(1,:),3,[]).';
+yps = reshape(xyps(2,:),3,[]).';
+
+for ii = 1:numPursuers
+    hPursuers(ii,:) = patch(extDisp.hAxesTV, 'XData', xps(ii,:), 'YData', yps(ii,:), 'FaceColor', 'blue', 'DisplayName', 'Pursuers');
 end
-CircValues = zeros(3, N+1);
+CircValues = zeros(3, numPursuers, numEvaders);
 IntersectionPoints = zeros(2, 2);
-minPts = zeros(2,N);
-minDst = zeros(1,N);
-CRS = cell(M,1);
-
+minPts = zeros(2,numPursuers);
+minDst = zeros(1,numPursuers);
+numParameterizationPoints = 100;
+CRS = zeros(2,numParameterizationPoints,numEvaders);
+thetaParameterEllipse = linspace(0,2*pi,numParameterizationPoints);
 % Path recording
-xpur = nan(max_iterations,2*N);
+xpur = nan(max_iterations,2*numPursuers);
 xeva = nan(max_iterations,2);
-ue = zeros(2, M);
+ue = zeros(2, numEvaders);
 
-h3 = gobjects(2, M);
+hEvaderCRS = gobjects(numEvaders,2);
 
-for jj = 1:M
-    CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], t_final*vmax/velRatio);
-
-    h3(:, jj) = extDisp.fimplicit(CRS{jj}, 'r', 'LineWidth', 1.5, 'DisplayName','Reachable Set');
+for jj = 1:numEvaders
+    %CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], t_final*vmax/velRatio);
+    %h3(:, jj) = extDisp.fimplicit(CRS{jj}, 'r', 'LineWidth', 1.5, 'DisplayName','Reachable Set');
+    [CRS(1,:,jj),CRS(2,:,jj)] = parEllipse(thetaParameterEllipse,xe(1:2,jj), [Pxavg; Pyavg],t_final*vmax/velRatio);
+    CRS(:,:,jj) = r.sim2rob(CRS(:,:,jj));
+    hEvaderCRS(jj, :) = extDisp.patch(CRS(1,:,jj),CRS(2,:,jj), 'FaceColor','r', 'EdgeColor','r', 'LineWidth', 1.5, 'FaceAlpha',0.25);
     %h4 = plot(0,0, 'm', 'LineWidth', 1.5);
     %h6 = plot(0,0, 'gd', 'LineWidth', 2.5);
     %h7 = plot(0,0, 'b*', 'LineWidth', 2.5);
 end
 
-h5 = extDisp.plot(xr(1,:),xr(2,:), 'md', 'LineWidth', 2.5, 'DisplayName','Reference Point');
+xr_plot = r.sim2rob(xr);
+hReferencePointsOnEllipse = extDisp.plot(xr_plot(1,:),xr_plot(2,:), 'md', 'LineWidth', 2.5, 'DisplayName','Reference Point');
 
-Apollonius = cell(N,1);
-EpsilonCirc = cell(N, 1);
-DefenseSurface = cell(N,1);
+hApollonius = gobjects(numPursuers,2,numEvaders);
+hEpsilonCirc = gobjects(numPursuers, 2);
+% DefenseSurface = gobjects(N,2);
 
 ngon_N = 16;
 ngon_theta = linspace(0, 2*pi, ngon_N + 1).';
@@ -200,26 +216,31 @@ ngon_theta(end) = [];
 ngon_H = [cos(ngon_theta), sin(ngon_theta)];
 ngon_k = vmax * cos(pi/ngon_N) * ones(ngon_N, 1);
 
-for jj = 1:M
-    for ii = 1:N
+for ii = 1:numPursuers
+    for jj = 1:numEvaders
         rs = norm([xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)])*velRatio/(1 - velRatio^2);
         os = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
-        ApCircle = circle(os(1), os(2), rs);
-        CircValues(:,ii) = [os(1); os(2); rs];
-        Apollonius{ii,jj} = extDisp.fimplicit(ApCircle, 'b', 'LineWidth', 1.5,'HandleVisibility','off');
+        %ApCircle = circle(os(1), os(2), rs);
+        [ApCircleX,ApCircleY] = parCircle(thetaParameterEllipse, os, rs);
+        CircValues(:,ii,jj) = [os(1); os(2); rs];
+        ApCircle = r.sim2rob([ApCircleX(:),ApCircleY(:)].');
+        hApollonius(ii,:,jj) = extDisp.patch(ApCircle(1,:),ApCircle(2,:), 'FaceColor', 'b', 'EdgeColor', 'b', 'LineWidth', 1.5,'FaceAlpha',0.05);
         % Find point on circles for minimum distance
         
-        % plot epsilon circle
-        epcirc = circle(xp(1,ii), xp(2,ii), epsilon);
-        EpsilonCirc{ii} = extDisp.fimplicit(epcirc, 'g', 'LineWidth', 1,'HandleVisibility','off');
     end
+    % plot epsilon circle
+    % epcirc = circle(xp(1,ii), xp(2,ii), epsilon);
+    [epcircX,epcircY] = parCircle(thetaParameterEllipse,xp(1:2,ii), epsilon);
+    epcirc = r.sim2rob([epcircX(:),epcircY(:)].');
+    hEpsilonCirc(ii,:) = extDisp.patch(epcirc(1,:), epcirc(2,:), 'EdgeColor', 'g', 'LineWidth', 1,'FaceColor','none');
 end
-count = 1;
 
 % Evader distance at terminal time
 r_terminal = vmax * t_terminal;
-nom_circle = circle(Pxavg, Pyavg, r_terminal);
-extDisp.fimplicit(nom_circle, 'g', 'LineWidth', 1.5,'HandleVisibility','off');
+% nom_circle = circle(Pxavg, Pyavg, r_terminal);
+[nom_circleX,nom_circleY] = parCircle(thetaParameterEllipse, [Pxavg;Pyavg], r_terminal);
+nom_circle = r.sim2rob([nom_circleX(:),nom_circleY(:)].');
+hDefenseCircle = extDisp.patch(nom_circle(1,:), nom_circle(2,:), 'EdgeColor', 'm', 'LineWidth', 1.5,'FaceColor','none');
 
 inpose = [xp(1:2,:).'; xe(1:2,:).'].';
 initialPoseX = inpose(1,:);
@@ -232,27 +253,27 @@ initialPoseY = inpose(2, :);
 for qq = 1:max_iterations
     % Update position and orientation
     [r, xy_all, theta_all] = r.getXYTheta();
-    xp = [xy_all(:, 1:end-M); theta_all(:, 1:end-M)];
-    xe = [xy_all(:, N+1:end); theta_all(:, N+1:end)];
+    xp = [xy_all(:, 1:end-numEvaders); theta_all(:, 1:end-numEvaders)];
+    xe = [xy_all(:, numPursuers+1:end); theta_all(:, numPursuers+1:end)];
     
     while r.initializing
         [r, xy_all, theta_all] = r.getXYTheta();
-        xp = [xy_all(:, 1:end-M); theta_all(:, 1:end-M)];
-        xe = [xy_all(:, N+1:end); theta_all(:, N+1:end)];
+        xp = [xy_all(:, 1:end-numEvaders); theta_all(:, 1:end-numEvaders)];
+        xe = [xy_all(:, numPursuers+1:end); theta_all(:, numPursuers+1:end)];
         [r, dxu] = r.goToInitialPositions(xy_all, theta_all);
         r = r.set_velocities(dxu); 
         r = r.step();
         [xps,yps] = getpatches(xp, 0.05);
         [xes,yes] = getpatches(xe, 0.05);
-        xyes = [xes(:).';yes(:).'];%r.sim2rob([xes(:).';yes(:).']);
-        xyps = [xps(:).';yps(:).'];%r.sim2rob([xps(:).';yps(:).']);
+        xyes = r.sim2rob([xes(:),yes(:)].');%[xes(:).';yes(:).'];%
+        xyps = r.sim2rob([xps(:),yps(:)].');%[xps(:).';yps(:).'];%
         
            
-        extDisp.set(h1, xyes(1,:), xyes(2,:));
+        set(hEvaders, 'XData', xyes(1,:), 'YData', xyes(2,:));
         xps = reshape(xyps(1,:),3,[]).';
         yps = reshape(xyps(2,:),3,[]).';
-        for ii = 1:N 
-            extDisp.set(h2(ii,:), xps(ii,:), yps(ii, :));
+        for ii = 1:numPursuers 
+            set(hPursuers(ii), 'XData', xps(ii,:), 'YData', yps(ii, :));
         end
         drawnow limitrate
     end
@@ -263,11 +284,13 @@ for qq = 1:max_iterations
     
     
     %% Main control loop
-    u = zeros(2, N);
-    for jj = 1:M
-        CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
-        set(h3(1, jj), 'Function', CRS{jj});
-        set(h3(2, jj), 'Function', CRS{jj});
+    u = zeros(2, numPursuers);
+    for jj = 1:numEvaders
+        %CRS{jj} = ellipse(xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
+        [CRS(1,:,jj),CRS(2,:,jj)] = parEllipse(thetaParameterEllipse, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
+        CRS(:,:,jj) = r.sim2rob(CRS(:,:,jj));
+        extDisp.set(hEvaderCRS(jj,:), CRS(1,:,jj),CRS(2,:,jj));
+        %set(hEvaderCRS(jj), 'Function', CRS{jj});
     end
 
     % Construct nominal control points
@@ -279,32 +302,35 @@ for qq = 1:max_iterations
     poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
     if norm([Pxavg; Pyavg] - xe(1:2, jj)) > norm([Pxavg; Pyavg] - poin.')
         r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, N);
+        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
     else
         poin = (-0.9 * ([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
         r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, N);
+        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
     end
 
     % Construct Apollonius Circles for each pursuer/evader pair
-    for ii = 1:N
-        for jj = 1:M
+    for ii = 1:numPursuers
+        for jj = 1:numEvaders
             CircValues(3,ii) = norm([xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)])*velRatio/(1 - velRatio^2);
             CircValues(1:2,ii) = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
-            ApCircle = circle(CircValues(1,ii), CircValues(2,ii), CircValues(3,ii));
-
-            set(Apollonius{ii,jj}, 'Function', ApCircle);
-
-            epcirc = circle(xp(1,ii), xp(2,ii), epsilon);
-            set(EpsilonCirc{ii}, 'Function', epcirc);
-
+            %ApCircle = circle(CircValues(1,ii), CircValues(2,ii), CircValues(3,ii));
+            [ApCircleX,ApCircleY] = parCircle(thetaParameterEllipse, CircValues(1:2,ii), CircValues(3,ii));
+            ApCircle = r.sim2rob([ApCircleX(:),ApCircleY(:)].');
+            extDisp.set(hApollonius(ii,:, jj), ApCircle(1,:),ApCircle(2,:));
+            
+            
         end
+        [epcircX,epcircY] = parCircle(thetaParameterEllipse, xp(1:2,ii), epsilon);
+        epcirc = r.sim2rob([epcircX(:),epcircY(:)].');
+        extDisp.set(hEpsilonCirc(ii,:), epcirc(1,:), epcirc(2,:));
+        
     end
-    tic
+    %tic
 
     % CBF QCQP for evader
-    for ii = 1:N
-        for jj = 1:M
+    for ii = 1:numPursuers
+        for jj = 1:numEvaders
             Aie(ii,:) = -(xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii));
             He{ii} = zeros(2);
             ke{ii} = Aie(ii,:).';
@@ -314,22 +340,22 @@ for qq = 1:max_iterations
     end
 
     uvmax = vmax/velRatio;
-    He{N+1} = zeros(2);
-    Aie(N+1,:) = (xe(1:2, 1) - [Pxavg; Pyavg]).'/norm(xe(1:2, 1) - [Pxavg; Pyavg]);
-    ke{N+1} = Aie(N+1,:).';
-    bie(N+1) = -uvmax + 1e2*tgo*uvmax - norm(xe(1:2, 1) - [Pxavg; Pyavg])^3;
-    de{N+1} = -bie(N+1);
+    He{numPursuers+1} = zeros(2);
+    Aie(numPursuers+1,:) = (xe(1:2, 1) - [Pxavg; Pyavg]).'/norm(xe(1:2, 1) - [Pxavg; Pyavg]);
+    ke{numPursuers+1} = Aie(numPursuers+1,:).';
+    bie(numPursuers+1) = -uvmax + 1e2*tgo*uvmax - norm(xe(1:2, 1) - [Pxavg; Pyavg])^3;
+    de{numPursuers+1} = -bie(numPursuers+1);
 
-    He{N+2} = 2*eye(2);
-    ke{N+2} = zeros(2,1);
-    de{N+2} = -uvmax^2;
+    He{numPursuers+2} = 2*eye(2);
+    ke{numPursuers+2} = zeros(2,1);
+    de{numPursuers+2} = -uvmax^2;
 
 
     % Solve QCQP
     % Compute alpha 1 angle for each pair
-    angles = zeros(N+1,1);
-    for ii = 1:N+1
-        for jj = 1:M
+    angles = zeros(numPursuers+1,1);
+    for ii = 1:numPursuers+1
+        for jj = 1:numEvaders
             if ii == 1
                 [x,y,~] = closestEllipse(CircValues(1:2,ii), xe(1:2, jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
                 xstar = [x; y];
@@ -338,12 +364,12 @@ for qq = 1:max_iterations
                 xistar = norm(xp(1:2,ii) - xstar);
                 % Angle via law of cosines
                 angles(ii) = acos((xistar^2 - xestar^2 - xei^2)/(-2*xei*xestar));
-            elseif ii == N+1
+            elseif ii == numPursuers+1
                 [x,y,~] = closestEllipse(CircValues(1:2,ii-1), xe(1:2, jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
                 xstar = [x; y];
-                xei = norm(xe(1:2, jj) - xp(1:2,N));
+                xei = norm(xe(1:2, jj) - xp(1:2,numPursuers));
                 xestar = norm(xe(1:2, jj) - xstar);
-                xistar = norm(xp(1:2,N) - xstar);
+                xistar = norm(xp(1:2,numPursuers) - xstar);
                 % Angle via law of cosines
                 angles(ii) = acos((xistar^2 - xestar^2 - xei^2)/(-2*xei*xestar));
             else
@@ -366,13 +392,13 @@ for qq = 1:max_iterations
         xie = xp(1:2,idx) - xe(1:2,jj);
         unom = velRatio*xie/norm(xie) + ((velRatio^2 - 1)*dxe - velRatio^2*eye(2)).'*num/norm(num);
         unom = unom/norm(unom)*uvmax;
-    elseif idx == N+1
+    elseif idx == numPursuers+1
         [x,y,lambda] = closestEllipse(CircValues(1:2,idx-1), xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
         xstar = [x; y];
         [A,B,C,D,E,F] = ellipseData(xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
         dxe = dxstardxe(A,B,C,D,E,F,x,y,lambda,velRatio,[Pxavg;Pyavg],xe(1:2,jj),tgo*vmax/velRatio);
-        num = xp(1:2,N) - xstar + velRatio^2*xstar - velRatio^2*xe(1:2,jj);
-        xie = xp(1:2,N) - xe(1:2,jj);
+        num = xp(1:2,numPursuers) - xstar + velRatio^2*xstar - velRatio^2*xe(1:2,jj);
+        xie = xp(1:2,numPursuers) - xe(1:2,jj);
         unom = velRatio*xie/norm(xie) + ((velRatio^2 - 1)*dxe - velRatio^2*eye(2)).'*num/norm(num);
         unom = unom/norm(unom)*uvmax;
     else
@@ -382,7 +408,7 @@ for qq = 1:max_iterations
         unom = unom/norm(unom)*uvmax;
     end
 
-    for jj = 1:M
+    for jj = 1:numEvaders
 
         if tgo*uvmax <= 1.08*norm(xe(1:2,jj) - [Pxavg; Pyavg])
             ue(:,jj) = ([Pxavg; Pyavg] - xe(1:2,jj))/norm(([Pxavg; Pyavg] - xe(1:2,jj)))*uvmax;
@@ -405,24 +431,30 @@ for qq = 1:max_iterations
         end
     end
 
-    for ii = 1:N
-        for jj = 1:M
+    for ii = 1:numPursuers
+        for jj = 1:numEvaders
 
             if pem(ii, jj) > 0.5
 
                 % Find two nearest pursuers
                 if qq == 1
-                    f_dist = arrayfun(@(r_idx) norm(xp(1:2,r_idx) - xp(1:2, ii)), 1:N);
-                    for iii = 1:N
+                    f_dist = arrayfun(@(r_idx) norm(xp(1:2,r_idx) - xp(1:2, ii)), 1:numPursuers);
+                    for iii = 1:numPursuers
                         if pem(iii, jj) < 0.5
                             f_dist(iii) = inf;
                         end
                     end
                     [val, indices] = sort(f_dist);
                     if1 = indices(2);
-                    if2 = indices(3);
                     f1 = xp(1:2, indices(2));
-                    f2 = xp(1:2, indices(3));
+                    if numPursuers > 2
+                        if2 = indices(3);
+                        f2 = xp(1:2, indices(3));
+                    else
+                        if2 = 1;
+                        f2 = zeros(2,1);
+                    end
+                    
                     neigh(ii, 1) = if1;
                     neigh(ii, 2) = if2;
                 else
@@ -432,7 +464,7 @@ for qq = 1:max_iterations
                     f2 = xp(1:2, if2);
                 end
 
-                if N == 1
+                if numPursuers == 1
                     slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2, jj));
                     % Find both intersection points
                     [A,B,C,D,E,F] = ellipseData(xe(1:2, jj), [Pxavg; Pyavg], tgo*vmax/velRatio);
@@ -490,7 +522,7 @@ for qq = 1:max_iterations
                         H = {zeros(2), zeros(2), 2*eye(2)};
                         k = {Aij', A1', zeros(2,1)};
                         d = {-bij, -b1, -vmax^2};   
-                    elseif ii == N
+                    elseif ii == numPursuers
                         xr(:,2*jj-1) = r2;
 
                         w1 = 1/(CircValues(3,if1) + 0);
@@ -590,8 +622,14 @@ for qq = 1:max_iterations
 %         end
 
     dxi = [u ue];
-    dxi = r.sim2rob_vel(dxi);
-    dxu = r.si2uni(dxi,[r.robotXY;r.robotTheta]);
+    dxip = u;
+    dxie = ue;
+    dxip = r.sim2rob_vel(dxip);
+    dxie = r.sim2rob_vel(dxie);
+    dxup = r.si2uni(dxip,xp);
+    dxue = r.si2unie(dxie,xe);
+%     dxu = r.si2uni(dxi,[r.robotXY;r.robotTheta]);
+    dxu = [dxup dxue]; 
 
 %     toc
     
@@ -604,51 +642,51 @@ for qq = 1:max_iterations
     
     
     % record pursuer positions
-    for ii = 1:N
+    for ii = 1:numPursuers
         xpur(qq, 2*ii-1:2*ii) = xp(1:2,ii).';
     end
     
     % record evaders positions
-    for jj = 1:M
+    for jj = 1:numEvaders
         xeva(qq,:) = xe(1:2,jj).';
     end
         
     h(qq) = min(hij);
-    for ii = 1:N
+    for ii = 1:numPursuers
         unorm(ii) = norm(u(:,ii));
     end
     umax(qq) = min(unorm);
 
-    
-    set(h5, 'XData', xr(1,:), 'YData', xr(2,:));
+    xr_plot = r.sim2rob(xr);
+    extDisp.set(hReferencePointsOnEllipse,  xr_plot(1,:), xr_plot(2,:));
     [xps,yps] = getpatches(xp, 0.05);
     [xes,yes] = getpatches(xe, 0.05);
     
-    xyes = [xes(:).';yes(:).']; %r.sim2rob([xes(:).';yes(:).']);
-    xyps = [xps(:).';yps(:).']; %r.sim2rob([xps(:).';yps(:).']);
+    xyes = r.sim2rob([xes(:),yes(:)].');%[xes(:).';yes(:).']; %
+    xyps = r.sim2rob([xps(:),yps(:)].');%;[xps(:).';yps(:).']; %
     
     xps = reshape(xyps(1,:),3,[]).';
     yps = reshape(xyps(2,:),3,[]).';
-    for ii = 1:N 
-        extDisp.set(h2(ii,:), xps(ii,:), yps(ii, :));
+    for ii = 1:numPursuers 
+        set(hPursuers(ii), 'XData', xps(ii,:), 'YData', yps(ii, :));
     end
 
-    extDisp.set(h1, xyes(1,:), xyes(2,:));        
+    set(hEvaders, 'XData', xyes(1,:), 'YData', xyes(2,:));        
     
 %     set(h1, 'XData', xes, 'YData', yes);
 %     set(h2, 'XData', xps, 'YData', yps);
     drawnow limitrate
     
     last_closest = closest;
-    dx = xp(1:2,1:N) - xe(1:2,1); 
+    dx = xp(1:2,1:numPursuers) - xe(1:2,1); 
     closest = 100000;
     
 %     if ~(r.isSimulation)
 %         pause(dt - 0.01)
 %     end
     
-    for jj = 1:M
-        for ii = 1:N
+    for jj = 1:numEvaders
+        for ii = 1:numPursuers
             ev_dist = norm(dx(1:2,ii));
             if ev_dist < closest
                 closest = ev_dist;
@@ -659,7 +697,7 @@ for qq = 1:max_iterations
             end
         end
         
-        if xe(1,jj) >= Pxmin && xe(1,jj) <= Pxmax && xe(2,jj) >= Pymin && xe(2,jj) <= Pymax || qq == 900%|| closest > last_closest
+        if xe(1,jj) >= Pxmin && xe(1,jj) <= Pxmax && xe(2,jj) >= Pymin && xe(2,jj) <= Pymax %|| qq == 900%|| closest > last_closest
             disp('Evader evaded capture');
             flag = -1;
         elseif flag == 1
@@ -675,14 +713,12 @@ for qq = 1:max_iterations
     
     if vid == true
         frame = cam.snapshot;
-        writeVideo(vidObj, frame);
+        frames2write(frameCount) = im2frame(frame(frameCropY,:,:));
+        %
+        frameCount = frameCount + 1;
     end
-    
 end
 
-if vid == true
-    close(vidObj);
-end
 %figure(2);
 %plot([1:qq]*dt, h(~isnan(h)));
 %ylabel('min(h_i_j)');
@@ -692,12 +728,29 @@ end
 % clear hFigStopLoop;
 r = r.stop();
 
-
-extDisp.plot(xpur(:,1), xpur(:,2), 'LineWidth', 2, 'Color', 'blue', 'LineStyle', '--','DisplayName','Pursuer Trajectories');
-extDisp.plot(xpur(:,3:2:end), xpur(:,4:2:end), 'LineWidth', 2, 'Color', 'blue', 'LineStyle', '--','HandleVisibility','off');
-extDisp.plot(xeva(:,1), xeva(:,2), 'LineWidth', 2, 'Color', 'red', 'LineStyle', '--','DisplayName','Evader Trajectory');
-
+xpur_plot = permute(xpur(~isnan(xpur(:,1)),1:2:end),[3,2,1]);
+ypur_plot = permute(xpur(~isnan(xpur(:,1)),2:2:end),[3,2,1]);
+xypur_plot = cat(1,xpur_plot,ypur_plot);
+xypur_plot = r.sim2rob(xypur_plot);
+xeva_plot = r.sim2rob(xeva(~isnan(xeva(:,1)),:).').';
+extDisp.plot(squeeze(xypur_plot(1,1,:)),squeeze(xypur_plot(2,1,:)), 'LineWidth', 2, 'Color', 'blue', 'LineStyle', '--','DisplayName','Pursuer Trajectories');
+extDisp.plot([permute(xypur_plot(1,2:end,:),[3,2,1]);nan(1,numPursuers-1)], [permute(xypur_plot(2,2:end,:),[3,2,1]);nan(1,numPursuers-1)], 'LineWidth', 2, 'Color', 'blue', 'LineStyle', '--','HandleVisibility','off');
+extDisp.plot(xeva_plot(:,1), xeva_plot(:,2), 'LineWidth', 2, 'Color', 'red', 'LineStyle', '--','DisplayName','Evader Trajectory');
 extDisp.legend('Location', 'northwest');
+
+if vid == true
+    frame = cam.snapshot;
+    frames2write(frameCount) = im2frame(frame(frameCropY,:,:));
+    vidObj.Quality = 75;
+    vidObj.FrameRate = round(frameCount/t);
+    frames2write = frames2write(1:frameCount);
+    
+    open(vidObj);
+    writeVideo(vidObj, frames2write);
+    close(vidObj);
+    clear('cam')
+end
+
 %figure(3);
 %plot([1:qq]*dt, umax(~isnan(umax)));
 %ylabel('min(u_i)');

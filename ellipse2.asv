@@ -1,0 +1,26 @@
+function [x,y] = parEllipse(theta, focus1, focus2, d)
+%PARELLIPSE Returns x and y coordinates of ellipse
+%   Given the the coordinates of the foci of an ellipse with major diameter
+%   d, this function computes the x and y coordinates of the points on the
+%   ellipse at the angles provided in theta relative to the center of the
+%   ellipse and aligned with the major axis, so that focus 1 is at an angle
+%   of theta = pi and focus2 is at an angle theta = 0.
+%%%
+% Compute the center of the circle.
+center = 0.5*(focus2 + focus1);
+%%%
+% Compute the major axis direction and reference angle
+diffFoci = focus2 - focus1;
+angleMajorDir = atan2(diffFoci(2),diffFoci(1));
+semiMajorLen = d/2;
+semiMinorLen = sqrt(semiMajorLen^2 - distCenter2Foci^2);
+
+xp = semiMajorLen*cos(theta);
+yp = semiMinorLen*sin(theta);
+
+x = xp*cos(angleMajorDir)-yp*sin(angleMajorDir) + center(1);
+y = xp*sin(angleMajorDir)+yp*cos(angleMajorDir) + center(2);
+
+xy = [x(:),y(:)].';
+
+end

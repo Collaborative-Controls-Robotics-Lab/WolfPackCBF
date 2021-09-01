@@ -29,6 +29,7 @@ classdef CCRL_Robots
         positionController
         barrierCertificate
         si2uni
+        si2unie
         
         sim2rob
         rob2sim
@@ -37,7 +38,7 @@ classdef CCRL_Robots
         
         initialPoseX
         initialPoseY
-        initialPoseTheta = [pi pi pi pi 0]
+        initialPoseTheta
         robotThetaBias
         
         ViconClient
@@ -50,7 +51,7 @@ classdef CCRL_Robots
     end
     
     methods
-        function obj = CCRL_Robots(numRobots, isSimulation, Dxmin, Dxmax, Dymin, Dymax, initialPoseX, initialPoseY, dt)
+        function obj = CCRL_Robots(numRobots, isSimulation, Dxmin, Dxmax, Dymin, Dymax, initialPoseXYTheta, dt)
             %CCRL_ROBOTS Construct an instance of this class
             %   Detailed explanation goes here
             
@@ -62,8 +63,9 @@ classdef CCRL_Robots
             obj.isSimulation = isSimulation;
             obj.robotXY = zeros(2, numRobots);
             obj.robotTheta = zeros(2, numRobots);
-            obj.initialPoseX = initialPoseX;
-            obj.initialPoseY = initialPoseY;
+            obj.initialPoseX = initialPoseXYTheta(1,:);
+            obj.initialPoseY = initialPoseXYTheta(2,:);
+            obj.initialPoseTheta = initialPoseXYTheta(3,:);
             if dt == 0 || ~isSimulation
                 obj.dynamicTime = true;
             else
@@ -75,9 +77,10 @@ classdef CCRL_Robots
             simCenter = [(Dxmin + Dxmax)/2;(Dymin + Dymax)/2];
             robWorkspaceHeight = 12*feet2meter;
             robWorkspaceWidth = 17*feet2meter;
+            obj.domainBoundaries = 0.5*[-robWorkspaceWidth, robWorkspaceWidth, -robWorkspaceHeight, robWorkspaceWidth];
             obj.scaleRatioSim2Rob = min(robWorkspaceHeight/(Dymax - Dymin),robWorkspaceWidth/(Dxmax - Dxmin));
-            obj.sim2rob = @(xx) [xx(1,:)-simCenter(1);xx(2,:)-simCenter(2)]*obj.scaleRatioSim2Rob;
-            obj.rob2sim = @(xx) [xx(1,:)/obj.scaleRatioSim2Rob+simCenter(1);xx(2,:)/obj.scaleRatioSim2Rob+simCenter(2)];
+            obj.sim2rob = @(xx) cat(1,xx(1,:,:)-simCenter(1),xx(2,:,:)-simCenter(2))*obj.scaleRatioSim2Rob;
+            obj.rob2sim = @(xx) cat(1,xx(1,:,:)/obj.scaleRatioSim2Rob+simCenter(1),xx(2,:,:)/obj.scaleRatioSim2Rob+simCenter(2));
             obj.sim2rob_vel = @(xx) xx * obj.scaleRatioSim2Rob;
             
             obj.robotDiameterRob = 0.14;
@@ -103,7 +106,7 @@ classdef CCRL_Robots
             obj.si2uniGain = 10;
             % Set actuator limits
             % angularVelLimit = 3*controlMaxSpeed;
-            obj.angularVelLimit = pi;
+            obj.angularVelLimit = 2*pi;
             % linearVelLimit = 0.49;
             % linearVelLimit = 0.6*controlMaxSpeed; % 0.8 ORIGINAL
             obj.linearVelLimit = 0.3;%2/3; % 0.8 ORIGINAL
@@ -114,11 +117,13 @@ classdef CCRL_Robots
             % barrierCertificate = @(x,y) x;
             % Generate a single integrator model to unicycle model control conversion
             obj.si2uni = ...
-                create_si_to_uni_mapping('ProjectionDistance', obj.robotDiameterRob);
+                create_si_to_uni_mapping('ProjectionDistance', 0.5*obj.robotDiameterRob);
+            obj.si2unie = ...
+                create_si_to_uni_mapping('ProjectionDistance', 0.15*obj.robotDiameterRob);
             
             
             if isSimulation
-                obj.robotXY = diag([robWorkspaceWidth, robWorkspaceHeight]) * (2*rand(2, numRobots) - 1);
+                obj.robotXY = diag([robWorkspaceWidth/2, robWorkspaceHeight/2]) * (2*rand(2, numRobots) - 1);
                 obj.robotTheta = 2*pi*rand(1,numRobots);
             else
                 disp('>>>> Establishing connections with Vicon...')
@@ -262,7 +267,7 @@ classdef CCRL_Robots
                 % Convert to unicycle model
                 dxu = obj.si2uni(dxi,[XYPos;Theta]);
                 % Check if they've converged
-                robotsDone = hypot(XYPos(1,:)-obj.initialPoseX,XYPos(2,:)-obj.initialPoseY)<obj.robotDiameterSim/4;
+                robotsDone = hypot(XYPos(1,:)-obj.initialPoseX,XYPos(2,:)-obj.initialPoseY)<obj.robotDiameterSim/2;
                 % Set LED's to yellow if they've converged
 %                 r.set_left_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
 %                 r.set_right_leds(obj.indxRobots(robotsDone),[255;255;0]*ones(1,nnz(robotsDone)));
@@ -337,7 +342,7 @@ classdef CCRL_Robots
             
             
             if obj.isSimulation
-                obj.robotVelLin = dxu(1,:);
+                obj.robotVelLin = dxu(1,:)/obj.scaleRatioSim2Rob;
                 obj.robotVelTheta = dxu(2, :);
             else
                 % Send velocity updates to robots
