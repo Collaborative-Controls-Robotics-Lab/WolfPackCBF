@@ -123,7 +123,7 @@ classdef CCRL_Robots
             
             
             if isSimulation
-                obj.robotXY = diag([robWorkspaceWidth/2, robWorkspaceHeight/2]) * (2*rand(2, numRobots) - 1);
+                obj.robotXY = rand( 2, numRobots);%diag([robWorkspaceWidth/2, robWorkspaceHeight/2]) * (2*rand(2, numRobots) - 1);
                 obj.robotTheta = 2*pi*rand(1,numRobots);
             else
                 disp('>>>> Establishing connections with Vicon...')

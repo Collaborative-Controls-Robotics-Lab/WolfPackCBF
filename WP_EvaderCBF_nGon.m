@@ -7,11 +7,11 @@
 %%
 close all
 vid = false;
-isSimulation = false;
+isSimulation = true;
 rng(140)
 
 % Number of evaders
-numEvaders = 1;
+numEvaders = 2;
 % Integration time
 dt = 0;
 
@@ -51,9 +51,8 @@ max_iterations = 1e4 %% HACK
 
 
 % Set initial evader positions and headings
-% xe = [-0.4*ones(1,M); .0*ones(1, M); zeros(1,M)];
-xe = [-0.3;
-   0; 0];
+xe = [-0.4*ones(1, numEvaders); linspace(-0.3, 0.3,numEvaders); zeros(1,numEvaders)];
+% xe = [-0.3; 0; 0];
 
 % Terminal time
 t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
@@ -61,7 +60,7 @@ t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
 L = ((vmax/velRatio*(t_final - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final - t_terminal)
 
 % Number of pursuers
-numPursuers = 2;%numAgents(velRatio, epsilon, L);%4;%
+numPursuers = 5;%numAgents(velRatio, epsilon, L);%4;%
 L_pred = distSpanned(velRatio, epsilon, numPursuers)
 
 
@@ -76,11 +75,13 @@ adj = zeros(numPursuers, numPursuers);
 
 % Pursuer-Evader Map
 pem = zeros(numPursuers,numEvaders);
-pem = [1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0;];
+pem = [1, 0; 
+       1, 0; 
+       1, 0; 1, 0; 1, 0; 1, 0; 1, 0; 1, 0;];
 
 % set initial pursuer position
 %(-vmax*t_terminal + Pxavg)
-xp = [Pxmin*ones(1,numPursuers) - 0.05; linspace(-0.15, 0.15, numPursuers); pi*ones(1,numPursuers)];
+xp = [Pxmin*ones(1,numPursuers) - 0.05; linspace(-0.5, 0.5, numPursuers); pi*ones(1,numPursuers)];
 %xp = [0.4*ones(1,N) + 0.1*rand(1,N); linspace(-0.13, 0.15, N); pi*ones(1,N)];
 
 % Virtual pursuers on the CRS boundary
@@ -142,7 +143,6 @@ ylim(domBounds(3:4));
 %% Visualization Elements
 % Load projector calibration matrix
 load('projectiveTransform.mat','H')
-
 % Construct an extended display object
 extDisp = extendedDisplay(H,hFig);
 
@@ -162,10 +162,14 @@ extDisp.patch(targetSet(1,:), targetSet(2,:), 'FaceColor', 'green', 'HandleVisib
 
 % Evader
 [xes,yes] = getpatches(xe,0.05);
+hEvaders = gobjects(numEvaders, 1);
 xyes = r.sim2rob([xes(:),yes(:)].');
 xes = reshape(xyes(1,:),3,[]);
 yes = reshape(xyes(2,:),3,[]);
-hEvaders = patch(extDisp.hAxesTV, 'XData', xes, 'YData', yes, 'FaceColor', 'red', 'DisplayName', 'Evader');
+
+for jj = 1:numEvaders
+    hEvaders(jj,:) = patch(extDisp.hAxesTV, 'XData', xes(jj,:), 'YData', yes(jj,:), 'FaceColor', 'red', 'DisplayName', 'Evader');
+end
 
 % Pursuers
 [xps,yps] = getpatches(xp,0.05);
@@ -247,7 +251,31 @@ initialPoseX = inpose(1,:);
 initialPoseY = inpose(2, :);
 
 
+%% Coalition Forming Step
+pem = zeros(numPursuers, numEvaders);
+isendpoint = zeros(numPursuers, numEvaders);
+ii = 1;
+for jj = 1:numEvaders
+    % Terminal time
+    t_terminal = norm(xe(1:2, jj) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio));
+    % Dist to span at terminal time
+    L = ((vmax/velRatio*(t_final - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final - t_terminal);
+    
+    % Number of pursuers
+    numP = numAgents(velRatio, epsilon, L);
+    n = 0;
 
+    isendpoint(ii, jj) = 1;
+    while n < numP
+        pem(ii, jj) = 1;
+        n = n + 1;
+        ii = ii + 1;
+    end
+    isendpoint(ii-1,jj) = -1;
+end
+
+r1 = zeros(2, numPursuers);
+r2 = zeros(2, numPursuers);
 
 %% Algorithm loop
 for qq = 1:max_iterations
@@ -268,8 +296,10 @@ for qq = 1:max_iterations
         xyes = r.sim2rob([xes(:),yes(:)].');%[xes(:).';yes(:).'];%
         xyps = r.sim2rob([xps(:),yps(:)].');%[xps(:).';yps(:).'];%
         
-           
-        set(hEvaders, 'XData', xyes(1,:), 'YData', xyes(2,:));
+        for ii = 1:numEvaders 
+            set(hEvaders(ii), 'XData', xyes(1,3*(ii-1)+1:3*ii), 'YData', xyes(2,3*(ii-1)+1:3*ii));
+        end
+%         set(hEvaders, 'XData', xyes(1,:), 'YData', xyes(2,:));
         xps = reshape(xyps(1,:),3,[]).';
         yps = reshape(xyps(2,:),3,[]).';
         for ii = 1:numPursuers 
@@ -294,19 +324,21 @@ for qq = 1:max_iterations
     end
 
     % Construct nominal control points
-    slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2, jj));
-%     poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
-%     r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-%     r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, N);
-
-    poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
-    if norm([Pxavg; Pyavg] - xe(1:2, jj)) > norm([Pxavg; Pyavg] - poin.')
-        r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
-    else
-        poin = (-0.9 * ([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
-        r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
+    for jj = 1:numEvaders
+        slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2, jj));
+    %     poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
+    %     r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
+    %     r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, N);
+    
+        poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
+        if norm([Pxavg; Pyavg] - xe(1:2, jj)) > norm([Pxavg; Pyavg] - poin.')
+            r1(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
+            r2(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
+        else
+            poin = (-0.9 * ([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
+            r1(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
+            r2(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
+        end
     end
 
     % Construct Apollonius Circles for each pursuer/evader pair
@@ -489,8 +521,8 @@ for qq = 1:max_iterations
                     ui = xe(1:2, jj) + xr(:,(jj*2-1)) + xr(:,2*jj) - 3*xp(1:2,ii);
                 else
 
-                    if ii == 1
-                        xr(:,(jj*2)) = r1;
+                    if isendpoint(ii, jj) == 1
+                        xr(:,(jj*2)) = r1(:, jj);
 
                         w1 = 1/(CircValues(3,ii) + 0);
                         w2 = 1/(CircValues(3,if1) + 0);
@@ -522,8 +554,8 @@ for qq = 1:max_iterations
                         H = {zeros(2), zeros(2), 2*eye(2)};
                         k = {Aij', A1', zeros(2,1)};
                         d = {-bij, -b1, -vmax^2};   
-                    elseif ii == numPursuers
-                        xr(:,2*jj-1) = r2;
+                    elseif isendpoint(ii, jj) == -1
+                        xr(:,2*jj-1) = r2(:,jj);
 
                         w1 = 1/(CircValues(3,if1) + 0);
                         w2 = 1/(CircValues(3,ii) + 0);
@@ -671,7 +703,10 @@ for qq = 1:max_iterations
         set(hPursuers(ii), 'XData', xps(ii,:), 'YData', yps(ii, :));
     end
 
-    set(hEvaders, 'XData', xyes(1,:), 'YData', xyes(2,:));        
+    for ii = 1:numEvaders 
+        set(hEvaders(ii), 'XData', xyes(1,3*(ii-1)+1:3*ii), 'YData', xyes(2,3*(ii-1)+1:3*ii));
+    end
+%     set(hEvaders, 'XData', xyes(1,:), 'YData', xyes(2,:));        
     
 %     set(h1, 'XData', xes, 'YData', yes);
 %     set(h2, 'XData', xps, 'YData', yps);
