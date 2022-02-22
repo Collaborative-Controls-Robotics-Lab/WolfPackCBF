@@ -60,7 +60,7 @@ t_terminal = norm(xe(1:2, 1) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio))
 L = ((vmax/velRatio*(t_final - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final - t_terminal)
 
 % Number of pursuers
-numPursuers = 6;%numAgents(velRatio, epsilon, L);%4;%
+numPursuers = 5;%numAgents(velRatio, epsilon, L);%4;%
 L_pred = distSpanned(velRatio, epsilon, numPursuers)
 
 
@@ -81,7 +81,7 @@ pem = [1, 0;
 
 % set initial pursuer position
 %(-vmax*t_terminal + Pxavg)
-xp = [Pxmin*ones(1,numPursuers) - 0.05; linspace(-0.6, 0.6, numPursuers); pi*ones(1,numPursuers)];
+xp = [Pxmin*ones(1,numPursuers) - 0.05; linspace(-0.5, 0.5, numPursuers); pi*ones(1,numPursuers)];
 %xp = [0.4*ones(1,N) + 0.1*rand(1,N); linspace(-0.13, 0.15, N); pi*ones(1,N)];
 
 % Virtual pursuers on the CRS boundary
@@ -201,9 +201,6 @@ for jj = 1:numEvaders
     [CRS(1,:,jj),CRS(2,:,jj)] = parEllipse(thetaParameterEllipse,xe(1:2,jj), [Pxavg; Pyavg],t_final*vmax/velRatio);
     CRS(:,:,jj) = r.sim2rob(CRS(:,:,jj));
     hEvaderCRS(jj, :) = extDisp.patch(CRS(1,:,jj),CRS(2,:,jj), 'FaceColor','r', 'EdgeColor','r', 'LineWidth', 1.5, 'FaceAlpha',0.25);
-    %h4 = plot(0,0, 'm', 'LineWidth', 1.5);
-    %h6 = plot(0,0, 'gd', 'LineWidth', 2.5);
-    %h7 = plot(0,0, 'b*', 'LineWidth', 2.5);
 end
 
 xr_plot = r.sim2rob(xr);
@@ -274,6 +271,8 @@ for jj = 1:numEvaders
     isendpoint(ii-1,jj) = -1;
 end
 
+r1 = zeros(2, numPursuers);
+r2 = zeros(2, numPursuers);
 
 %% Algorithm loop
 for qq = 1:max_iterations
@@ -322,25 +321,30 @@ for qq = 1:max_iterations
     end
 
     % Construct nominal control points
-    slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2, jj));
-%     poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
-%     r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-%     r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, N);
-
-    poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
-    if norm([Pxavg; Pyavg] - xe(1:2, jj)) > norm([Pxavg; Pyavg] - poin.')
-        r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
-    else
-        poin = (-0.9 * ([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
-        r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
-        r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
+    for jj = 1:numEvaders
+        slope = [0 -1; 1 0]*([Pxavg; Pyavg] - xe(1:2, jj));
+    %     poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
+    %     r1 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
+    %     r2 = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, N);
+    
+        poin = (-r_terminal * ([Pxavg; Pyavg] - xe(1:2, jj))/norm([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
+        if norm([Pxavg; Pyavg] - xe(1:2, jj)) > norm([Pxavg; Pyavg] - poin.')
+            r1(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
+            r2(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
+        else
+            poin = (-0.9 * ([Pxavg; Pyavg] - xe(1:2, jj))).' + [Pxavg Pyavg];
+            r1(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, 1);
+            r2(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo*vmax/velRatio, numPursuers);
+        end
     end
 
     % Construct Apollonius Circles for each pursuer/evader pair
     for ii = 1:numPursuers
         for jj = 1:numEvaders
-            CircValues(3,ii) = norm([xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)])*velRatio/(1 - velRatio^2);
+            di = norm([xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)]); % distance between pursuer and evader
+            gammai = 0; % angle from pursuer to evader
+            CircValues(3,ii) = (di*velRatio + epsilon)/(1 - velRatio^2); % revised to Andrew's method
+            CircValues(1:2,ii) = (velRatio*epsilon + di)/(1 - velRatio^2)*[cos(gammai);sin(gammai)];
             CircValues(1:2,ii) = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
             %ApCircle = circle(CircValues(1,ii), CircValues(2,ii), CircValues(3,ii));
             [ApCircleX,ApCircleY] = parCircle(thetaParameterEllipse, CircValues(1:2,ii), CircValues(3,ii));
@@ -518,7 +522,7 @@ for qq = 1:max_iterations
                 else
 
                     if isendpoint(ii, jj) == 1
-                        xr(:,(jj*2)) = r1;
+                        xr(:,(jj*2)) = r1(:, jj);
 
                         w1 = 1/(CircValues(3,ii) + 0);
                         w2 = 1/(CircValues(3,if1) + 0);
@@ -551,7 +555,7 @@ for qq = 1:max_iterations
                         k = {Aij', A1', zeros(2,1)};
                         d = {-bij, -b1, -vmax^2};   
                     elseif isendpoint(ii, jj) == -1
-                        xr(:,2*jj-1) = r2;
+                        xr(:,2*jj-1) = r2(:,jj);
 
                         w1 = 1/(CircValues(3,if1) + 0);
                         w2 = 1/(CircValues(3,ii) + 0);

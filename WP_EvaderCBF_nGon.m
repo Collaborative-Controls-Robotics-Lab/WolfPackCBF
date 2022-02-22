@@ -201,9 +201,6 @@ for jj = 1:numEvaders
     [CRS(1,:,jj),CRS(2,:,jj)] = parEllipse(thetaParameterEllipse,xe(1:2,jj), [Pxavg; Pyavg],t_final*vmax/velRatio);
     CRS(:,:,jj) = r.sim2rob(CRS(:,:,jj));
     hEvaderCRS(jj, :) = extDisp.patch(CRS(1,:,jj),CRS(2,:,jj), 'FaceColor','r', 'EdgeColor','r', 'LineWidth', 1.5, 'FaceAlpha',0.25);
-    %h4 = plot(0,0, 'm', 'LineWidth', 1.5);
-    %h6 = plot(0,0, 'gd', 'LineWidth', 2.5);
-    %h7 = plot(0,0, 'b*', 'LineWidth', 2.5);
 end
 
 xr_plot = r.sim2rob(xr);
@@ -344,8 +341,12 @@ for qq = 1:max_iterations
     % Construct Apollonius Circles for each pursuer/evader pair
     for ii = 1:numPursuers
         for jj = 1:numEvaders
-            CircValues(3,ii) = norm([xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)])*velRatio/(1 - velRatio^2);
-            CircValues(1:2,ii) = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
+            diffi = [xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)];
+            di = norm(diffi); % distance between pursuer and evader
+            gammai = atan2(-diffi(2),-diffi(1)); % angle from pursuer to evader
+            CircValues(3,ii) = (di*velRatio + epsilon)/(1 - velRatio^2); % revised to Andrew's method
+            CircValues(1:2,ii) = (velRatio*epsilon + di)/(1 - velRatio^2)*[cos(gammai);sin(gammai)] + xe(1:2,jj);
+%             CircValues(1:2,ii) = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
             %ApCircle = circle(CircValues(1,ii), CircValues(2,ii), CircValues(3,ii));
             [ApCircleX,ApCircleY] = parCircle(thetaParameterEllipse, CircValues(1:2,ii), CircValues(3,ii));
             ApCircle = r.sim2rob([ApCircleX(:),ApCircleY(:)].');
