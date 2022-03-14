@@ -1,4 +1,4 @@
-classdef CCRL_Robots
+classdef CCRL_Robots < handle
     %CCRL_ROBOTS Summary of this class goes here
     %   Detailed explanation goes here
     
@@ -123,8 +123,8 @@ classdef CCRL_Robots
             
             
             if isSimulation
-                obj.robotXY = rand( 2, numRobots);%diag([robWorkspaceWidth/2, robWorkspaceHeight/2]) * (2*rand(2, numRobots) - 1);
-                obj.robotTheta = 2*pi*rand(1,numRobots);
+                obj.robotXY = initialPoseXYTheta(1:2,:);
+                obj.robotTheta = initialPoseXYTheta(3,:);
             else
                 disp('>>>> Establishing connections with Vicon...')
                 [obj.ViconClient,numTrackables] = ViconClientInit;
