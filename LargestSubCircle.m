@@ -1,4 +1,4 @@
-function circVal = LargestSubCircle(circVals, x0)
+function [circVal] = LargestSubCircle(circVals, x0)
     cX = circVals(1,:);
     cY = circVals(2,:);
     cR = circVals(3,:);

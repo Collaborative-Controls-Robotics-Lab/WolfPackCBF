@@ -228,7 +228,6 @@ for ii = 1:numPursuers
         ApCircle = r.sim2rob([ApCircleX(:),ApCircleY(:)].');
         hApollonius(ii,:,jj) = extDisp.patch(ApCircle(1,:),ApCircle(2,:), 'FaceColor', 'b', 'EdgeColor', 'b', 'LineWidth', 1.5,'FaceAlpha',0.05);
         % Find point on circles for minimum distance
-        
     end
     % plot epsilon circle
     % epcirc = circle(xp(1,ii), xp(2,ii), epsilon);
@@ -250,27 +249,31 @@ initialPoseY = inpose(2, :);
 
 
 %% Coalition Forming Step
-pem = zeros(numPursuers, numEvaders);
+% pem = zeros(numPursuers, numEvaders);
+% isendpoint = zeros(numPursuers, numEvaders);
+% ii = 1;
+% for jj = 1:numEvaders
+%     % Terminal time
+%     t_terminal = norm(xe(1:2, jj) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio));
+%     % Dist to span at terminal time
+%     L = ((vmax/velRatio*(t_final(jj) - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final(jj) - t_terminal);
+%     
+%     % Number of pursuers
+%     numP = numAgents(velRatio, epsilon, L);
+%     n = 0;
+% 
+%     isendpoint(ii, jj) = 1;
+%     while n < numP
+%         pem(ii, jj) = 1;
+%         n = n + 1;
+%         ii = ii + 1;
+%     end
+%     isendpoint(ii-1,jj) = -1;
+% end
+pem = ones(numPursuers, numEvaders);
 isendpoint = zeros(numPursuers, numEvaders);
-ii = 1;
-for jj = 1:numEvaders
-    % Terminal time
-    t_terminal = norm(xe(1:2, jj) - [Pxavg; Pyavg])/(vmax*(1 + 1/velRatio));
-    % Dist to span at terminal time
-    L = ((vmax/velRatio*(t_final(jj) - t_terminal))^2 - (vmax*t_terminal)^2)/(vmax/velRatio)/(t_final(jj) - t_terminal);
-    
-    % Number of pursuers
-    numP = numAgents(velRatio, epsilon, L);
-    n = 0;
-
-    isendpoint(ii, jj) = 1;
-    while n < numP
-        pem(ii, jj) = 1;
-        n = n + 1;
-        ii = ii + 1;
-    end
-    isendpoint(ii-1,jj) = -1;
-end
+isendpoint(1,:) = 1;
+isendpoint(numPursuers,:) = -1;
 
 r1 = zeros(2, numPursuers);
 r2 = zeros(2, numPursuers);
@@ -337,6 +340,21 @@ for qq = 1:max_iterations
             r1(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio, 1);
             r2(:,jj) = lineEllipse(poin, slope, xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio, numPursuers);
         end
+        
+    end
+    
+    max_dist = 0;
+    l1 = 0;
+    l2 = 0;
+    for ii = 1:numEvaders
+        for jj = 1:numEvaders
+            dis = norm(r1(:,ii) - r2(:,jj));
+            if dis > max_dist
+                max_dist = dis;
+                l1 = ii;
+                l2 = jj;
+            end
+        end
     end
 
     % Construct Apollonius Circles for each pursuer/evader pair
@@ -345,11 +363,12 @@ for qq = 1:max_iterations
             diffi = [xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)];
             di = norm(diffi); % distance between pursuer and evader
             gammai = atan2(-diffi(2),-diffi(1)); % angle from pursuer to evader
-            CircValues(3,ii) = (di*velRatio + epsilon)/(1 - velRatio^2); % revised to Andrew's method
-            CircValues(1:2,ii) = (velRatio*epsilon + di)/(1 - velRatio^2)*[cos(gammai);sin(gammai)] + xe(1:2,jj);
-%             CircValues(1:2,ii) = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
+%             CircValues(3,ii,jj) = norm([xe(1,jj); xe(2,jj)] - [xp(1,ii); xp(2,ii)])*velRatio/(1 - velRatio^2);
+%             CircValues(1:2,ii,jj) = ([xp(1,ii); xp(2,ii)] - velRatio^2*[xe(1,jj); xe(2,jj)])/(1 - velRatio^2);
+            CircValues(3,ii,jj) = (di*velRatio + epsilon)/(1 - velRatio^2); % revised to Andrew's method
+            CircValues(1:2,ii,jj) = (velRatio*epsilon + di)/(1 - velRatio^2)*[cos(gammai);sin(gammai)] + xe(1:2,jj);
             %ApCircle = circle(CircValues(1,ii), CircValues(2,ii), CircValues(3,ii));
-            [ApCircleX,ApCircleY] = parCircle(thetaParameterEllipse, CircValues(1:2,ii), CircValues(3,ii));
+            [ApCircleX,ApCircleY] = parCircle(thetaParameterEllipse, CircValues(1:2,ii,jj), CircValues(3,ii,jj));
             ApCircle = r.sim2rob([ApCircleX(:),ApCircleY(:)].');
             extDisp.set(hApollonius(ii,:, jj), ApCircle(1,:),ApCircle(2,:));
             
@@ -358,6 +377,8 @@ for qq = 1:max_iterations
         [epcircX,epcircY] = parCircle(thetaParameterEllipse, xp(1:2,ii), epsilon);
         epcirc = r.sim2rob([epcircX(:),epcircY(:)].');
         extDisp.set(hEpsilonCirc(ii,:), epcirc(1,:), epcirc(2,:));
+        
+%         subCircValues = LargestSubCircle(CircValues(:,))
         
     end
     %tic
@@ -391,7 +412,7 @@ for qq = 1:max_iterations
     for ii = 1:numPursuers+1
         for jj = 1:numEvaders
             if ii == 1
-                [x,y,~] = closestEllipse(CircValues(1:2,ii), xe(1:2, jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
+                [x,y,~] = closestEllipse(CircValues(1:2,ii,jj), xe(1:2, jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
                 xstar = [x; y];
                 xei = norm(xe(1:2, jj) - xp(1:2,ii));
                 xestar = norm(xe(1:2, jj) - xstar);
@@ -399,7 +420,7 @@ for qq = 1:max_iterations
                 % Angle via law of cosines
                 angles(ii) = acos((xistar^2 - xestar^2 - xei^2)/(-2*xei*xestar));
             elseif ii == numPursuers+1
-                [x,y,~] = closestEllipse(CircValues(1:2,ii-1), xe(1:2, jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
+                [x,y,~] = closestEllipse(CircValues(1:2,ii-1,jj), xe(1:2, jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
                 xstar = [x; y];
                 xei = norm(xe(1:2, jj) - xp(1:2,numPursuers));
                 xestar = norm(xe(1:2, jj) - xstar);
@@ -418,7 +439,7 @@ for qq = 1:max_iterations
     idx = find(angles == max(max(angles)));
 
     if idx == 1
-        [x,y,lambda] = closestEllipse(CircValues(1:2,idx), xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
+        [x,y,lambda] = closestEllipse(CircValues(1:2,idx,jj), xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
         xstar = [x; y];
         [A,B,C,D,E,F] = ellipseData(xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
         dxe = dxstardxe(A,B,C,D,E,F,x,y,lambda,velRatio,[Pxavg;Pyavg],xe(1:2,jj),tgo(jj)*vmax/velRatio);
@@ -427,7 +448,7 @@ for qq = 1:max_iterations
         unom = velRatio*xie/norm(xie) + ((velRatio^2 - 1)*dxe - velRatio^2*eye(2)).'*num/norm(num);
         unom = unom/norm(unom)*uvmax;
     elseif idx == numPursuers+1
-        [x,y,lambda] = closestEllipse(CircValues(1:2,idx-1), xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
+        [x,y,lambda] = closestEllipse(CircValues(1:2,idx-1,jj), xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
         xstar = [x; y];
         [A,B,C,D,E,F] = ellipseData(xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
         dxe = dxstardxe(A,B,C,D,E,F,x,y,lambda,velRatio,[Pxavg;Pyavg],xe(1:2,jj),tgo(jj)*vmax/velRatio);
@@ -469,16 +490,17 @@ for qq = 1:max_iterations
     for ii = 1:numPursuers
         for jj = 1:numEvaders
 
-            if pem(ii, jj) > 0.5
+%             if pem(ii, jj) > 0.5
 
                 % Find two nearest pursuers
                 if qq == 1
                     f_dist = arrayfun(@(r_idx) norm(xp(1:2,r_idx) - xp(1:2, ii)), 1:numPursuers);
-                    for iii = 1:numPursuers
-                        if pem(iii, jj) < 0.5
-                            f_dist(iii) = inf;
-                        end
-                    end
+                    % Don't work with pursuers pursuing different evaders
+%                     for iii = 1:numPursuers
+%                         if pem(iii, jj) < 0.5
+%                             f_dist(iii) = inf;
+%                         end
+%                     end
                     [val, indices] = sort(f_dist);
                     if1 = indices(2);
                     f1 = xp(1:2, indices(2));
@@ -524,23 +546,23 @@ for qq = 1:max_iterations
                     ui = xe(1:2, jj) + xr(:,(jj*2-1)) + xr(:,2*jj) - 3*xp(1:2,ii);
                 else
 
-                    if isendpoint(ii, jj) == 1
-                        xr(:,(jj*2)) = r1(:, jj);
+                    if isendpoint(ii) == 1
+                        xr(:,(jj*2)) = r1(:, l1);
 
-                        w1 = 1/(CircValues(3,ii) + 0);
-                        w2 = 1/(CircValues(3,if1) + 0);
-                        a1 = (CircValues(3,ii) + 0);
-                        a2 = (CircValues(3,if1) + 0);
+                        w1 = 1/(CircValues(3,ii,jj) + 0);
+                        w2 = 1/(CircValues(3,if1,jj) + 0);
+                        a1 = (CircValues(3,ii,jj) + 0);
+                        a2 = (CircValues(3,if1,jj) + 0);
 
-                        ui = 0.5*xr(:,(jj*2)) + 0.5*w1/(w1 + w2)*CircValues(1:2,ii) ...
-                            + 0.5*w2/(w1 + w2)*CircValues(1:2,if1) - CircValues(1:2,ii);
+                        ui = 0.5*xr(:,(jj*2)) + 0.5*w1/(w1 + w2)*CircValues(1:2,ii,jj) ...
+                            + 0.5*w2/(w1 + w2)*CircValues(1:2,if1,jj) - CircValues(1:2,ii,jj);
                         ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
                         Aij = -(velRatio*(xp(1:2,ii) - xe(1:2, jj)).'/norm(xp(1:2,ii) - xe(1:2, jj)) ...
                             - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
                         bij = a1/(a1 + a2)*(velRatio*((xe(1:2, jj) - xp(1:2,ii)).'/norm(xe(1:2, jj) - xp(1:2,ii)) + (xe(1:2, jj) - f1).'/norm(xe(1:2, jj) - f1)) ...
                             * ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2, jj)) + norm(f1 - xe(1:2, jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);
                         % A1 - CRS constraint
-                        [x,y,lambda] = closestEllipse(CircValues(1:2,ii), xe(1:2, jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
+                        [x,y,lambda] = closestEllipse(CircValues(1:2,ii,jj), xe(1:2, jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
                         [A,B,C,D,E,F] = ellipseData(xe(1:2, jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
                         xstar = [x;y];
                         dxi = dxstardxi(A,B,C,D,E,F,x,y,lambda,velRatio);
@@ -557,23 +579,23 @@ for qq = 1:max_iterations
                         H = {zeros(2), zeros(2), 2*eye(2)};
                         k = {Aij', A1', zeros(2,1)};
                         d = {-bij, -b1, -vmax^2};   
-                    elseif isendpoint(ii, jj) == -1
-                        xr(:,2*jj-1) = r2(:,jj);
+                    elseif isendpoint(ii) == -1
+                        xr(:,2*jj-1) = r2(:,l2);
 
-                        w1 = 1/(CircValues(3,if1) + 0);
-                        w2 = 1/(CircValues(3,ii) + 0);
-                        a1 = (CircValues(3,if1) + 0);
-                        a2 = (CircValues(3,ii) + 0);
+                        w1 = 1/(CircValues(3,if1,jj) + 0);
+                        w2 = 1/(CircValues(3,ii,jj) + 0);
+                        a1 = (CircValues(3,if1,jj) + 0);
+                        a2 = (CircValues(3,ii,jj) + 0);
 
-                        ui = 0.5*xr(:,2*jj-1) + 0.5*w2/(w2 + w1)*CircValues(1:2,ii) ...
-                            + 0.5*w1/(w2 + w1)*CircValues(1:2,if1) - CircValues(1:2,ii);
+                        ui = 0.5*xr(:,2*jj-1) + 0.5*w2/(w2 + w1)*CircValues(1:2,ii,jj) ...
+                            + 0.5*w1/(w2 + w1)*CircValues(1:2,if1,jj) - CircValues(1:2,ii,jj);
                         ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);
 
                         Aij = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
                             - (xp(1:2,ii) - f1).'/norm(xp(1:2,ii) - f1));
                         bij = a1/(a1 + a2)*(velRatio*((xe(1:2,jj) - xp(1:2,ii)).'/norm(xe(1:2,jj) - xp(1:2,ii)) + (xe(1:2,jj) - f1).'/norm(xe(1:2,jj) - f1)) ...
                             *ue(:,jj) + 1e4*(velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f1 - xe(1:2,jj))) - norm(xp(1:2,ii) - f1) + epsilon)^3);
-                        [x,y,lambda] = closestEllipse(CircValues(1:2,ii), xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
+                        [x,y,lambda] = closestEllipse(CircValues(1:2,ii,jj), xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
                         [A,B,C,D,E,F] = ellipseData(xe(1:2,jj), [Pxavg; Pyavg], tgo(jj)*vmax/velRatio);
                         xstar = [x;y];
                         dxi = dxstardxi(A,B,C,D,E,F,x,y,lambda,velRatio);
@@ -593,16 +615,16 @@ for qq = 1:max_iterations
                     else
                         Aij = zeros(2);
                         bij = zeros(2,1);
-                        w0 = 1/(CircValues(3,if1) + 0);
-                        w1 = 1/(CircValues(3,ii) + 0);
-                        w2 = 1/(CircValues(3,if2) + 0);
-                        a0 = (CircValues(3,if1) + 0);
-                        a1 = (CircValues(3,ii) + 0);
-                        a2 = (CircValues(3,if2) + 0);
+                        w0 = 1/(CircValues(3,if1,jj) + 0);
+                        w1 = 1/(CircValues(3,ii,jj) + 0);
+                        w2 = 1/(CircValues(3,if2,jj) + 0);
+                        a0 = (CircValues(3,if1,jj) + 0);
+                        a1 = (CircValues(3,ii,jj) + 0);
+                        a2 = (CircValues(3,if2,jj) + 0);
 
-                        ui = 0.5*(w1/(w0 + w1) + w1/(w1 + w2))*CircValues(1:2,ii) ...
-                            + 0.5*w0/(w0 + w1)*CircValues(1:2,if1) ...
-                            + 0.5*w2/(w2 + w1)*CircValues(1:2,if2) - CircValues(1:2,ii);%+ xe(1:2,jj) - 2*CircValues(1:2,ii+1);
+                        ui = 0.5*(w1/(w0 + w1) + w1/(w1 + w2))*CircValues(1:2,ii,jj) ...
+                            + 0.5*w0/(w0 + w1)*CircValues(1:2,if1,jj) ...
+                            + 0.5*w2/(w2 + w1)*CircValues(1:2,if2,jj) - CircValues(1:2,ii,jj);%+ xe(1:2,jj) - 2*CircValues(1:2,ii+1,jj);
                         ui = (1 - velRatio^2)*ui + velRatio^2*ue(:,jj);% + xe(1:2,jj) - xp(1:2,ii);
                         Aij(1,:) = -(velRatio*(xp(1:2,ii) - xe(1:2,jj)).'/norm(xp(1:2,ii) - xe(1:2,jj)) ...
                             - (xp(1:2,ii) - f2).'/norm(xp(1:2,ii) - f2));
@@ -641,7 +663,7 @@ for qq = 1:max_iterations
                     u(:,ii) = u(:,ii) + pem(ii,jj) * z;
                     hij(ii) = velRatio*(norm(xp(1:2,ii) - xe(1:2,jj)) + norm(f2 - xe(1:2,jj))) - norm(xp(1:2,ii) - f2)+ 2*epsilon;                   
                 end
-            end
+%             end
         end
     end
 
